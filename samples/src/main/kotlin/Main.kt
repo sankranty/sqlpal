@@ -20,7 +20,7 @@ suspend fun main(args: Array<String>)
 
     when {
         args.contains("ins") -> ins3()
-        args.contains("upd") -> upd()
+        args.contains("upd") -> upd3()
         args.contains("find") -> find()
         args.contains("sel") -> sel3()
         args.contains("gen") -> insert(args.contains("big"))
@@ -66,6 +66,24 @@ fun upd() {
         p.about = "I like economics"
         update(p, it)
     }
+}
+
+fun upd3() {
+    var p = selectById<Person3>(11)
+    p.name = "Ekaterina"
+    p.num = listOf(500)
+    p.num2 = arrayOf(1000)
+    update(p) { only(::name, ::num) }
+
+    p = selectById(4)
+    update(p) { set(::num to listOf(1300)) }
+    println(p)
+
+    p = selectById(7)
+    p.name = "Ekaterina"
+    p.num = listOf(1, 2, 3, 4)
+    p.edu2 = listOf(Education.school, Education.scienceDegree)
+    update(p) { except(::name) }
 }
 
 fun find() {
