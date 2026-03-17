@@ -52,6 +52,8 @@ fun ins3() {
 }
 
 fun insMany() {
+    delete<Person3>(-"id >= 30")
+
     val list = mutableListOf<Person3>()
     repeat(10_000) {
         val num = (0..9).random()

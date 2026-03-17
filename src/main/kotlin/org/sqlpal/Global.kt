@@ -423,12 +423,25 @@ fun update(entity: Any, params: List<Pair<String, Any?>>, con: Connection? = nul
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @return number of rows affected. */
-fun delete (entity: Any, con: Connection? = null): Int {
+ * @return number of rows deleted. */
+fun delete(entity: Any, con: Connection? = null): Int {
     val sb = StringBuilder("DELETE FROM ${tableName(entity)}")
     val bindParams = ArrayList<Any?>(1)
     buildWhereWithId(entity, sb, bindParams)
     return exec(Cmd(sb.toString(), bindParams), con)
+}
+
+/** Deletes rows that meet [where] conditions, considering that:
+ * - table is named as class but in snake case,
+ * - columns are named as properties but in snake case.
+ * @param where WHERE clause content specified with -"..." or -"""...""" syntax.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
+ * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
+ * @return number of rows deleted. */
+inline fun <reified T: Any> delete(where: Cmd, con: Connection? = null): Int {
+    val sb = StringBuilder("DELETE FROM ${Cmd.camel2Snake(T::class.simpleName!!)} WHERE ${where.sql}")
+    return exec(Cmd(sb.toString(), where.bindParams), con)
 }
 
 /** Executes INSERT, UPDATE, DELETE or command with no results.
