@@ -84,7 +84,12 @@ inline fun <reified T: Any> select(where: Cmd, capacity: Int = -1, con: Connecti
     val sb = StringBuilder("SELECT ")
     Cmd.getConstructor(T::class).parameters.forEach { sb.append(Cmd.camel2Snake(it.name!!), ',') }
     sb.deleteCharAt(sb.length - 1) // Remove trailing comma
-    sb.append(" FROM ", Cmd.camel2Snake(T::class.simpleName!!), " WHERE ", where.sql)
+
+    sb.append(" FROM ")
+    sb.append(Cmd.camel2Snake(T::class.simpleName!!))
+    sb.append(" WHERE ")
+    sb.append(where.sql)
+
     return read(Cmd(sb.toString(), where.bindParams), capacity, con)
 }
 
@@ -400,7 +405,8 @@ fun update(entity: Any, params: List<Pair<String, Any?>>, con: Connection? = nul
 
     val bindParams = ArrayList<Any?>(params.size)
     params.forEach {
-        sb.append(it.first, " = ?,")
+        sb.append(it.first)
+        sb.append(" = ?,")
         bindParams.add(it.second)
     }
     sb.deleteCharAt(sb.length - 1) // Remove trailing comma
@@ -545,7 +551,9 @@ private fun appendColToStatement(sb: StringBuilder, colName: String, strAfterCol
 
 private fun buildWhereWithId(entity: Any, sb: StringBuilder, bindParams:ArrayList<Any?>) {
     val id = Cmd.getIdProperty(entity.javaClass.kotlin)
-    sb.append(" WHERE ", Cmd.camel2Snake(id.name), " = ?")
+    sb.append(" WHERE ")
+    sb.append(Cmd.camel2Snake(id.name))
+    sb.append(" = ?")
     addPropToBindParams(entity, id, bindParams)
 }
 
