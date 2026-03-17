@@ -227,7 +227,7 @@ fun <T> read(query: Cmd, capacity: Int, con: Connection? = null, createItem: (r:
  * Only values of properties annotated with [AutoGen] are updated. */
 fun insert(entity: Any, con: Connection? = null, updateAutoGenValues: Boolean = true) =
     execInsertOrUpdate(entity, null, con, updateAutoGenValues,
-        "INSERT INTO %s (", "") { _, sb, params -> appendValuesClause(sb, params.size)}
+        "INSERT INTO %s (", "") { _, sb, params -> appendValuesClause(sb, params.size) }
 
 /** Inserts multiple items in single batch, considering:
  * - all items are of the same type,
@@ -239,7 +239,7 @@ fun insert(entity: Any, con: Connection? = null, updateAutoGenValues: Boolean = 
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return number of inserted rows. */
 inline fun <reified T: Any> insertMany(items: Iterable<T>, con: Connection? = null) =
-// Public inline function can't access private members, but it must be inline to get generic type.
+    // Public inline function can't access private members, but it must be inline to get generic type.
     // So moved implementation to separate internal method that receives type just as parameter.
     insertMany(T::class, items, con)
 
@@ -494,7 +494,7 @@ private val emptyMap: RefreshMap = mutableMapOf() // static value to avoid creat
 
 private inline fun execInsertOrUpdate(entity: Any, propsToUpdate: PropsToUpdate?,
                                       con: Connection?, updateAutoGenValues: Boolean,
-                                      statement: String, strAfterColName: String,
+                                      statement: String, paramPlaceholder: String,
                                       buildParamsClause: (Any, StringBuilder, ArrayList<Any?>) -> Unit)
 {
     val tableName = tableName(entity)
@@ -505,24 +505,23 @@ private inline fun execInsertOrUpdate(entity: Any, propsToUpdate: PropsToUpdate?
     val bindParams = ArrayList<Any?>(props.size)
     val autoGenColumns: RefreshMap = if (updateAutoGenValues) mutableMapOf() else emptyMap
     when {
-        propsToUpdate == null -> {
+        propsToUpdate == null ->
             for (p in props)
-                processProp(entity, p, bindParams, sb, strAfterColName, updateAutoGenValues, autoGenColumns)
-        }
+                processProp(entity, p, bindParams, sb, paramPlaceholder, updateAutoGenValues, autoGenColumns)
+
         propsToUpdate.include != null -> {
             for (p in propsToUpdate.include) {
-                appendColToStatement(sb, Cmd.camel2Snake(p.name), strAfterColName)
+                appendCol(sb, Cmd.camel2Snake(p.name), paramPlaceholder)
                 addPropToBindParams(entity, p, bindParams)
             }
             if (updateAutoGenValues)
                 for (p in props)
                     addToRefreshListIfAutoGen(p, true, autoGenColumns, Cmd.camel2Snake(p.name))
         }
-        propsToUpdate.exclude != null -> {
+        propsToUpdate.exclude != null ->
             for (p in props)
                 propsToUpdate.exclude.find { p.name == it.name }
-                    ?: processProp(entity, p, bindParams, sb, strAfterColName, updateAutoGenValues, autoGenColumns)
-        }
+                    ?: processProp(entity, p, bindParams, sb, paramPlaceholder, updateAutoGenValues, autoGenColumns)
     }
     sb.deleteCharAt(sb.length - 1) // Remove trailing comma
 
@@ -538,11 +537,11 @@ private inline fun execInsertOrUpdate(entity: Any, propsToUpdate: PropsToUpdate?
 }
 
 private fun processProp(entity: Any, p: KProperty<*>, bindParams: ArrayList<Any?>,
-                        sb: StringBuilder, strAfterColName: String,
+                        sb: StringBuilder, paramPlaceholder: String,
                         updateAutoGenValues: Boolean, autoGenColumns: RefreshMap) {
     val colName = Cmd.camel2Snake(p.name)
     if (!addToRefreshListIfAutoGen(p, updateAutoGenValues, autoGenColumns, colName)) {
-        appendColToStatement(sb, colName, strAfterColName)
+        appendCol(sb, colName, paramPlaceholder)
         addPropToBindParams(entity, p, bindParams)
     }
 }
@@ -556,9 +555,9 @@ private fun addToRefreshListIfAutoGen(p: KProperty<*>, updateAutoGenValues: Bool
     }
     else false
 
-private fun appendColToStatement(sb: StringBuilder, colName: String, strAfterColName: String) {
+private fun appendCol(sb: StringBuilder, colName: String, paramPlaceholder: String) {
     sb.append(colName)
-    sb.append(strAfterColName)
+    sb.append(paramPlaceholder)
     sb.append(',')
 }
 
