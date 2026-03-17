@@ -20,6 +20,7 @@ suspend fun main(args: Array<String>)
 
     when {
         args.contains("ins") -> ins3()
+        args.contains("insm") -> insMany()
         args.contains("upd") -> upd3()
         args.contains("find") -> find()
         args.contains("sel") -> sel3()
@@ -48,6 +49,30 @@ fun ins3() {
     insert(p)
     println("Inserted person ID is ${p.id} and numbers are ${p.num}")
     Person3::name.name
+}
+
+fun insMany() {
+    val list = mutableListOf<Person3>()
+    repeat(10_000) {
+        val num = (0..9).random()
+        val edu = when ((0..3).random()) {
+            1 -> Education.school
+            2 -> Education.middle
+            3 -> Education.high
+            else -> Education.undefined
+        }
+        list.add(
+            Person3(
+                name = "Katerina",
+                num = mutableListOf(num, num + 7),
+                num2 = arrayOf(7, 8, 9),
+                edu = arrayOf(edu, if (it % 2 == 0) Education.middle else Education.high),
+                edu2 = mutableListOf()
+            )
+        )
+    }
+    val insertedCount = insertMany(list)
+    println("Inserted $insertedCount rows")
 }
 
 fun upd() {

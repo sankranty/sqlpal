@@ -57,7 +57,7 @@ object Sql: Interpolator<Any, Cmd> {
         val params = params()
 
         val builder = StringBuilder()
-        val bindParams = mutableListOf<Any>()
+        val bindParams = mutableListOf<Any?>()
         var i = 0
 
         builder.append(strings[i])

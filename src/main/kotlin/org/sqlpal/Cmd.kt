@@ -18,7 +18,7 @@ import kotlin.reflect.jvm.jvmErasure
  * while we have to use public inline functions to allow to specify generic type. */
 class Cmd(
     val sql: String,
-    val bindParams: List<Any?>,
+    val bindParams: MutableList<Any?>,
 ) {
     @PublishedApi
     internal companion object
@@ -206,20 +206,35 @@ class Cmd(
         else
             { i, _ -> getValue(i) }
 
+    fun doBatch(items: Iterable<Any>, con: Connection?, fillItemParams: (Any, MutableList<Any?>) -> Unit): IntArray =
+        doAction(null, con, true) {
+            for (item in items) {
+                bindParams.clear()
+                fillItemParams(item, bindParams)
+                for (i in 1..bindParams.count())
+                    setBindParam(bindParams[i - 1], i, it)
+                it.addBatch()
+            }
+            it.executeBatch()
+        }
+
     /** Runs specified action with [PreparedStatement]. */
-    fun <T> doAction(con: Connection?, action: (PreparedStatement) -> T) = doAction(null, con, action)
+    fun <T> doAction(con: Connection?, action: (PreparedStatement) -> T) =
+        doAction(null, con, false, action)
 
     /** Runs specified action with [PreparedStatement] and specified columns which values should be returned. */
-    fun <T> doAction(autoGenColumns: Array<String>?, con: Connection?, action: (PreparedStatement) -> T) =
+    fun <T> doAction(autoGenColumns: Array<String>?, con: Connection?, isBatch: Boolean = false, action: (PreparedStatement) -> T) =
         if (con != null)
-            doActionOnConnection(con, autoGenColumns, action)
+            doActionOnConnection(con, autoGenColumns, isBatch, action)
         else
-            Sql.dataSource.connection.use { doActionOnConnection(it, autoGenColumns, action) }
+            Sql.dataSource.connection.use { doActionOnConnection(it, autoGenColumns, isBatch, action) }
 
-    private inline fun <T> doActionOnConnection(con: Connection, autoGenColumns: Array<String>?, action: (PreparedStatement) -> T) =
+    private inline fun <T> doActionOnConnection(con: Connection, autoGenColumns: Array<String>?,
+                                                isBatch: Boolean, action: (PreparedStatement) -> T) =
         con.prepareStatement(sql, autoGenColumns).use {
-            for (i in 1..bindParams.count())
-                setBindParam(bindParams[i - 1], i, it)
+            if (!isBatch) // For batch params will be set inside action.
+                for (i in 1..bindParams.count())
+                    setBindParam(bindParams[i - 1], i, it)
             action(it)
         }
 
