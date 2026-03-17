@@ -45,7 +45,8 @@ class SqlPalException(message: String) : Exception(message)
  * - property that maps to primary key column is annotated with [Id] and its column datatype is integer or long.
  * If query returns no rows, then [IllegalArgumentException] is thrown.
  * @param id ID to look for.
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return object of specified type, created from query results
  * by mapping names of constructor parameters to column names (case-insensitive, ignoring _ symbol).
@@ -58,7 +59,8 @@ inline fun <reified T: Any> selectById(id: Long, con: Connection? = null) =
  * - property that maps to primary key column is annotated with [Id] and its column datatype is integer or long.
  * Null is returned if nothing found.
  * @param id ID to look for.
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return object of specified type, created from query results
  * by mapping names of constructor parameters to column names (case-insensitive, ignoring _ symbol).
@@ -71,7 +73,8 @@ inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null) =
  * After conditions can be specified any clause that goes after WHERE (e.g. ORDER BY or LIMIT).
  * @param capacity If specified, sets initial capacity of [ArrayList] where results are stored.
  * It does not limit number of rows fetched from database. You can add LIMIT in [where] query.
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return [ArrayList] with objects of specified type, created from query results
  * by mapping names of constructor parameters to column names (case-insensitive, ignoring _ symbol).
@@ -88,7 +91,8 @@ inline fun <reified T: Any> select(where: Cmd, capacity: Int = -1, con: Connecti
 /** Runs specified query and returns single value from the first column of the first returned row.
  * If query returns no rows, then [IllegalArgumentException] is thrown.
  * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience. */
 inline fun <reified T: Any> readValue(query: Cmd, con: Connection? = null) =
     readValueOrNull<T>(query, con) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
@@ -96,14 +100,16 @@ inline fun <reified T: Any> readValue(query: Cmd, con: Connection? = null) =
 /** Runs specified query and returns single value from the first column of the first returned row,
  * or null if query returned no rows.
  * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience. */
 inline fun <reified T: Any> readValueOrNull(query: Cmd, con: Connection? = null) =
     query.readValues(T::class, 1, con).firstOrNull()
 
 /** Runs specified query and returns [ArrayList] with values from the first column of the result set.
  * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience. */
 inline fun <reified T: Any> readValues(query: Cmd, con: Connection? = null) =
     query.readValues(T::class, -1, con)
@@ -113,7 +119,8 @@ inline fun <reified T: Any> readValues(query: Cmd, con: Connection? = null) =
  * If some property doesn't have corresponding column in result set, then move it from constructor to class body.
  * If query returns no rows, then [IllegalArgumentException] is thrown.
  * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience. */
 inline fun <reified T: Any> readOne(query: Cmd, con: Connection? = null) =
     readOneOrNull<T>(query, con) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
@@ -123,7 +130,8 @@ inline fun <reified T: Any> readOne(query: Cmd, con: Connection? = null) =
  * If some property doesn't have corresponding column in result set, then move it from constructor to class body.
  * Returns null if query returned no rows.
  * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience. */
 inline fun <reified T: Any> readOneOrNull(query: Cmd, con: Connection? = null) =
     query.read(T::class, 1, con).firstOrNull()
@@ -132,7 +140,8 @@ inline fun <reified T: Any> readOneOrNull(query: Cmd, con: Connection? = null) =
  * by mapping names of constructor parameters to column names (case-insensitive, ignoring _ symbol).
  * If some property doesn't have corresponding column in result set, then move it from constructor to class body.
  * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience. */
 inline fun <reified T: Any> read(query: Cmd, con: Connection? = null) =
     query.read(T::class, -1, con)
@@ -143,7 +152,8 @@ inline fun <reified T: Any> read(query: Cmd, con: Connection? = null) =
  * @param query SELECT query specified with -"..." or -"""...""" syntax.
  * @param capacity If specified, sets initial capacity of [ArrayList] where results are stored.
  * It does not limit number of rows fetched from database.
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience. */
 inline fun <reified T: Any> read(query: Cmd, capacity: Int, con: Connection? = null) =
     query.read(T::class, capacity, con)
@@ -168,7 +178,8 @@ fun <T> read(query: Cmd, capacity: Int, createItem: (r: ResultSet) -> T) =
 
 /** Runs specified query and returns [ArrayList] with objects created from query results by [createItem] callback.
  * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @param createItem callback that is called for each fetched row.
  * SqlPay provides extension methods on [ResultSet] like [enum] or [intVal] for all basic types
@@ -180,7 +191,8 @@ fun <T> read(query: Cmd, con: Connection, createItem: (r: ResultSet) -> T) =
  * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param capacity If specified, sets initial capacity of [ArrayList] where results are stored.
  * It does not limit number of rows fetched from database.
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @param createItem callback that is called for each fetched row.
  * SqlPay provides extension methods on [ResultSet] like [enum] or [intVal] for all basic types
@@ -203,7 +215,8 @@ fun <T> read(query: Cmd, capacity: Int, con: Connection? = null, createItem: (r:
  * - columns are named as properties but in snake case.
  * Properties annotated with [AutoGen] are not included into INSERT,
  * but are read from INSERT results if [updateAutoGenValues] is true.
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @param updateAutoGenValues true (the default) to update properties with values of autogenerated columns (e.g. ID).
  * Only values of properties annotated with [AutoGen] are updated. */
@@ -238,7 +251,8 @@ fun update(entity: Any, where: Cmd? = null, updateAutoGenValues: Boolean = false
  * Properties annotated with [AutoGen] are not included into UPDATE,
  * but are read from UPDATE results if [updateAutoGenValues] is true.
  * @param entity object to update.
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @param where WHERE clause content specified with -"..." or -"""...""" syntax.
  * After conditions can be specified any clause, that goes after WHERE (e.g. ORDER BY or LIMIT).
@@ -283,7 +297,8 @@ fun <T: Any> update(entity: T, where: Cmd? = null, updateAutoGenValues: Boolean 
  * Properties annotated with [AutoGen] are not included into UPDATE,
  * but are read from UPDATE results if [updateAutoGenValues] is true.
  * @param entity object to update.
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @param where WHERE clause content specified with -"..." or -"""...""" syntax.
  * After conditions can be specified any clause, that goes after WHERE (e.g. ORDER BY or LIMIT).
@@ -336,7 +351,8 @@ fun set(vararg items: Pair<KProperty0<*>, Any?>) = PropsToUpdate(
  * This overload is useful when need to update columns for which there are no corresponding properties in the class.
  * @param entity Entity to update.
  * @param params list of pairs <column name - value to set>.
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return number of rows affected. */
 fun update(entity: Any, params: List<Pair<String, Any?>>, con: Connection? = null): Int {
@@ -358,7 +374,8 @@ fun update(entity: Any, params: List<Pair<String, Any?>>, con: Connection? = nul
  * - columns are named as properties but in snake case
  * - property that maps to primary key column is annotated with [Id].
  * @param entity Entity to delete.
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return number of rows affected. */
 fun delete (entity: Any, con: Connection? = null): Int {
@@ -372,7 +389,8 @@ fun delete (entity: Any, con: Connection? = null): Int {
  * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param autoGenColumns array of column names for witch to return values after execution.
  * Note that unlike [read] and [select] methods where
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return map of colName - value for inserted/updated row. Map contains columns specified in [autoGenColumns].
  * It is useful to get values of auto-generated columns (e.g. ID). Returns null if no rows are updated. */
@@ -389,7 +407,8 @@ fun execWithResults(query: Cmd, autoGenColumns: Array<String>? = null, con: Conn
 
 /** Executes INSERT, UPDATE, DELETE or command with no results.
  * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return value from the first column of the first row of returned result set, or null if result set is empty.
  * Note that if RETURNING clause was not specified in the query,
@@ -402,7 +421,8 @@ fun execWithResult(query: Cmd, con: Connection? = null) = query.doAction(con) {
 
 /** Executes INSERT, UPDATE, DELETE or command with no results, and returns number of rows affected.
  * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, otherwise connection is obtained from pool.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience. */
 fun exec(query: Cmd, con: Connection? = null) = query.doAction(con) { it.executeUpdate() }
 
