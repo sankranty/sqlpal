@@ -29,13 +29,13 @@ class Cmd @PublishedApi internal constructor(
 
         fun <T: Any> getConstructor(type: KClass<T>): KFunction<T> {
             val error = "Class must have primary constructor where are declared all properties that should be read from database."
-            val constr = type.primaryConstructor ?: throw Exception(error)
-            if (constr.parameters.isEmpty()) throw Exception(error)
+            val constr = type.primaryConstructor ?: throw SqlPalException(error)
+            if (constr.parameters.isEmpty()) throw SqlPalException(error)
             return constr
         }
 
         fun <T: Any> getIdProperty(type: KClass<T>) = type.memberProperties.find { it.hasAnnotation<Id>() }
-            ?: throw SQLException("Unable to generate WHERE clause for statement on ${type.simpleName} as it does not have field annotated with @Id")
+            ?: throw SqlPalException("Unable to generate WHERE clause for statement on ${type.simpleName} as it does not have field annotated with @Id")
 
         /** Converts String from camelCase to snake_case. */
         fun camel2Snake(name: String): String {
@@ -108,7 +108,7 @@ class Cmd @PublishedApi internal constructor(
         val constr = getConstructor(classType)
         val readers = constr.parameters.map {
             val colIndex = colIndices[it.name!!.lowercase()]
-                ?: throw SQLException("ResultSet doesn't has column that maps to '${it.name}' parameter of '${classType.simpleName}' constructor.")
+                ?: throw SqlPalException("ResultSet doesn't has column that maps to '${it.name}' parameter of '${classType.simpleName}' constructor.")
             createReader(it.type, colIndex, it.name, classType.qualifiedName)
         }
 
@@ -185,10 +185,10 @@ class Cmd @PublishedApi internal constructor(
             SQLXML::class -> { i, _ -> getSQLXML(i) }
             UUID::class -> { i, _ -> getObject(i) } // Not guaranteed for all DB, but supported at least by Postgres.
 
-            else -> throw SQLException("Property '$paramName' of $className class has type '${type.classifier}', " +
-                        "for witch mapping to SQL type is not implemented. " +
-                        "To provide mapper for '${type.classifier}' add it to Sql.valueMappers " +
-                        "to support it across the entire app, or annotate this property with @Mapper annotation."
+            else -> throw SqlPalException("Property '$paramName' of $className class has type '${type.classifier}', " +
+                    "for witch mapping to SQL type is not implemented. " +
+                    "To provide mapper for '${type.classifier}' add it to Sql.valueMappers " +
+                    "to support it across the entire app, or annotate this property with @Mapper annotation."
             )
         }
         return Triple(reader, colIndex, valueType)
