@@ -12,11 +12,9 @@ import kotlin.reflect.jvm.jvmErasure
 /** Encapsulates SQL-query with bind parameters and provides methods to execute it.
  * If connection is specified, then command is executed on it, otherwise connection is obtained from pool.
  *
- * Instances of this class can be created by -"..." or -"""...""" syntax.
- * It is not suggested to used it directly, just pass it methods that accept it.
- * It's methods are public due to public inline functions can't call private functions,
- * while we have to use public inline functions to allow to specify generic type. */
-class Cmd(
+ * Instances of this class are created by -"..." or -"""...""" syntax.
+ * It is not recommended to work with it directly, just pass it to methods that accept it. */
+class Cmd @PublishedApi internal constructor(
     val sql: String,
     val bindParams: MutableList<Any?>,
 ) {
@@ -87,11 +85,14 @@ class Cmd(
         }
     }
 
-    // Moved implementation to this function
-    // (that accepts generic type as a parameter instead of func<Generic>() notation),
-    // because call to T::class requires method to be inline, what is not desired
-    // as this method is pretty large, and it will be called in many places in client code,
+    // Public functions, that we provide for reading, are marked as inline, to allow to specify generic type
+    // (because call to T::class requires method to be inline), what is not desired,
+    // as implementation is pretty large, and it will be called in many places in client code,
     // so it will blow app work set if inlined.
+    // Thus, implementation is moved to this function (that accepts generic type already as a parameter,
+    // instead of someFunc<Generic>() notation, and so it doesn't need to be inline).
+    // It's also marked with @PublishedApi due to public inline functions can't call private or internal methods,
+    // as their code is embedded at call site.
     @PublishedApi
     internal fun <T: Any> read(classType: KClass<T>, capacity: Int, con: Connection?) = doAction(con) { stmt ->
         val rs = stmt.executeQuery()

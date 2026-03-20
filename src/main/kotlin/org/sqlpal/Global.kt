@@ -240,7 +240,7 @@ fun insert(entity: Any, con: Connection? = null, updateAutoGenValues: Boolean = 
  * @return number of inserted rows. */
 inline fun <reified T: Any> insertMany(items: Iterable<T>, con: Connection? = null) =
     // Public inline function can't access private members, but it must be inline to get generic type.
-    // So moved implementation to separate internal method that receives type just as parameter.
+    // So implementation is moved to separate internal method, that receives type just as parameter.
     insertMany(T::class, items, con)
 
 @PublishedApi
@@ -372,9 +372,12 @@ private fun getWhereBuilder(where: Cmd?) = if (where == null) ::buildWhereWithId
     Unit
 }
 
-/** Is returned by [only], [except] and [set] functions to return as lambda result
+/** Is created by [only], [except] and [set] functions to return as lambda result
  * of 'propList' parameter of [update] function. Don't use it directly. */
-class PropsToUpdate(val include: Array<out KProperty0<*>>?, val exclude: Array<out KProperty0<*>>?)
+class PropsToUpdate internal constructor(
+    val include: Array<out KProperty0<*>>?,
+    val exclude: Array<out KProperty0<*>>?
+)
 
 /** Provides list of properties to update in database, see [update] for description. */
 fun only(vararg items: KProperty0<*>) = PropsToUpdate(items, null)
