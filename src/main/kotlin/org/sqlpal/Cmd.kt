@@ -243,7 +243,6 @@ class Cmd(
             statement.setObject(index, null)
             return
         }
-
         val (value, componentType) = if (paramValue is ListAndType)
             paramValue.list to paramValue.componentType
         else
@@ -252,29 +251,35 @@ class Cmd(
         if (Sql.valueMappers[value::class]?.writeValue(value, statement, index, componentType) == true)
             return
 
-        if (value is Enum<*>)
-            statement.setObject(index, value, Types.OTHER)
-        else if (value is List<*>) {
-            if (componentType == null) throw IllegalArgumentException(
-                "List is not wrapped with ListAndType object, what indicates a bug or incorrect use of SqlPay.")
+        when (value) {
+            is Enum<*> -> statement.setObject(index, value, Types.OTHER)
+            is List<*> -> {
+                if (componentType == null) throw IllegalArgumentException(
+                    "List is not wrapped with ListAndType object, what indicates a bug or incorrect use of SqlPal.")
 
-            if (componentType.java.isEnum)
-                setEnumArray({ value[it] }, value.size, componentType, index, statement)
-            else {
-                // JDBC supports arrays but not lists, so convert List to Array.
-                // Array must be of certain type, not array of Any, otherwise driver would not be able to figure out
-                // to what SQL type map it to. So create it via reflection to explicitly specify type.
-                @Suppress("UNCHECKED_CAST")
-                val array = java.lang.reflect.Array.newInstance(componentType.javaObjectType, value.size) as Array<Any?>
-                for (i in value.indices)
-                    array[i] = value[i]
-                statement.setObject(index, array, Types.ARRAY)
+                if (componentType.java.isEnum)
+                    setEnumArray({ value[it] }, value.size, componentType, index, statement)
+                else {
+                    // JDBC supports arrays but not lists, so convert List to Array.
+                    // Array must be of certain type, not array of Any, otherwise driver would not be able to figure out
+                    // to what SQL type map it to. So create it via reflection to explicitly specify type.
+                    @Suppress("UNCHECKED_CAST")
+                    val array = java.lang.reflect.Array.newInstance(componentType.javaObjectType, value.size) as Array<Any?>
+                    for (i in value.indices)
+                        array[i] = value[i]
+                    statement.setObject(index, array, Types.ARRAY)
+                }
             }
+            is Array<*> ->
+                if (componentType!!.java.isEnum)
+                    setEnumArray({ value[it] }, value.size, componentType, index, statement)
+                else
+                    statement.setObject(index, value, Types.ARRAY)
+            is ZonedDateTime -> statement.setObject(index, value.toOffsetDateTime())
+            is Instant -> statement.setObject(index, value.atOffset(ZoneOffset.UTC))
+            is Currency -> statement.setString(index, value.toString())
+            else -> statement.setObject(index, value) // Other primitive types are directly supported by JDBC.
         }
-        else if (value is Array<*> && componentType!!.java.isEnum)
-            setEnumArray({ value[it] }, value.size, componentType, index, statement)
-        else
-            statement.setObject(index, value)
     }
 
     private inline fun setEnumArray(getValue: (Int) -> Any?, itemCount: Int, componentType: KClass<*>,
@@ -290,13 +295,6 @@ class Cmd(
             statement.setObject(colIndex, array, Types.ARRAY)
     }
 }
-
-/*
-val types = con.metaData.typeInfo
-while (types.next()) {
-    println("SQL type: ${types.getObject(1)} --- " +
-            "Java type: ${types.getObject(2) as Types}")
-}*/
 
 @Suppress("UNCHECKED_CAST")
 private fun ResultSet.readEnumArray(colIndex: Int, enumType: KType): Array<Enum<*>>?
