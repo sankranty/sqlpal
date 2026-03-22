@@ -28,6 +28,7 @@ data class Person3 (
     var num2: Array<Int>,
     var edu: Array<Education>,
     var edu2: List<Education>? = emptyList(),
+    var gen: Gender = Gender.female
 )
 
 data class Person2 (

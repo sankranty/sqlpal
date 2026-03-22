@@ -139,7 +139,7 @@ fun sel3() {
     val num = emptyArray<Int>()
     val num2 = emptyList<Int>()
     //select<Person3>(-"num = $num and num2 = ${-num2}").forEach { println("Person $it") }
-    select<Person3>(-"edu2 = ${-educations}").forEach { println("Person $it") }
+    select<Person3>(-"edu2 = ${-educations}", includeOptional = false).forEach { println("Person $it") }
 
     //val educations = emptyList<Education>()
     //select<Person3>(-"num2 = $num and edu2 = ${-educations}").forEach { println("Person $it") }

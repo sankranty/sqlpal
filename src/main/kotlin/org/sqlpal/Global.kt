@@ -68,7 +68,10 @@ inline fun <reified T: Any> selectById(id: Long, con: Connection? = null) =
 inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null) =
     readOneOrNull<T>(Cmd.createFindByIdCmd<T>(id), con)
 
-/** Executes SELECT query with WHERE clause content from [where] parameter.
+/** Executes SELECT with columns specified from primary constructor parameters
+ * and WHERE clause content from [where] parameter, considering that:
+ * - table is named as class, but in snake case,
+ * - columns are named as primary constructor parameters, but in snake case.
  * @param where WHERE clause content specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * After conditions can be specified any clause that goes after WHERE (e.g. ORDER BY or LIMIT).
  * @param capacity If specified, sets initial capacity of [ArrayList] where results are stored.
@@ -76,13 +79,15 @@ inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null) =
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
+ * @param includeOptional true (the default) to add to SELECT clause parameters that has default values, otherwise false.
  * @return [ArrayList] with objects of specified type, created from query results
  * by mapping names of constructor parameters to column names (case-insensitive, ignoring _ symbol).
  * If some property doesn't have corresponding column in result set, then move it from constructor to class body. */
-inline fun <reified T: Any> select(where: Cmd, capacity: Int = -1, con: Connection? = null): ArrayList<T>
+inline fun <reified T: Any> select(where: Cmd, capacity: Int = -1, con: Connection? = null, includeOptional: Boolean = true): ArrayList<T>
 {
     val sb = StringBuilder("SELECT ")
-    Cmd.getConstructor(T::class).parameters.forEach { sb.append(Cmd.camel2Snake(it.name!!), ',') }
+    for (p in Cmd.getConstructor(T::class).parameters)
+        if (includeOptional || !p.isOptional) sb.append(Cmd.camel2Snake(p.name!!), ',')
     sb.deleteCharAt(sb.length - 1) // Remove trailing comma
 
     sb.append(" FROM ")

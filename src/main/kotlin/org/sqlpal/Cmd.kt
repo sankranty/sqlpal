@@ -85,6 +85,15 @@ class Cmd @PublishedApi internal constructor(
         }
     }
 
+    private data class Reader(
+        val read: ResultSet.(Int, KType) -> Any?,
+        val colIndex: Int,
+        val type: KType,
+        val param: KParameter?
+    )
+
+    private var hasUnmappedOptionalParams = false
+
     // Public functions, that we provide for reading, are marked as inline, to allow to specify generic type
     // (because call to T::class requires method to be inline), what is not desired,
     // as implementation is pretty large, and it will be called in many places in client code,
@@ -106,38 +115,63 @@ class Cmd @PublishedApi internal constructor(
 
         // Create reader for each constructor parameter
         val constr = getConstructor(classType)
-        val readers = constr.parameters.map {
-            val colIndex = colIndices[it.name!!.lowercase()]
-                ?: throw SqlPalException("ResultSet doesn't has column that maps to '${it.name}' parameter of '${classType.simpleName}' constructor.")
-            createReader(it.type, colIndex, it.name, classType.qualifiedName)
-        }
-
-        // For each row in ResultSet read values by readers and pass them to primary constructor
+        val readers = createReaders(constr.parameters, colIndices, classType.qualifiedName)
         val values = arrayOfNulls<Any>(readers.count()) // Array where to read values for each row
+
+        // If primary constructor has optional params, for which there are no corresponding columns,
+        // then also create map, to specify only parameters, that have columns in result set.
+        val createObject = if (hasUnmappedOptionalParams) {
+            val map = mutableMapOf<KParameter, Any?>()
+            for (r in readers) map[r.param!!] = null
+            {
+                var i = 0
+                for (entry in map) entry.setValue(values[i++])
+                constr.callBy(map)
+            }
+        } else
+            fun () = constr.call(*values)
+
+        // For each row in ResultSet read values by readers and pass them to primary constructor.
         val results = if (capacity >= 0) ArrayList<T>(capacity) else ArrayList()
         while (rs.next()) {
             for (i in readers.indices) {
                 val (read, colIndex, type) = readers[i]
                 values[i] = rs.read(colIndex, type)
             }
-            results.add(constr.call(*values))
+            results.add(createObject())
         }
         results
+    }
+
+    private fun createReaders(params: List<KParameter>, colIndices: Map<String, Int>, className: String?): List<Reader> {
+        val readers = ArrayList<Reader>(params.size)
+        hasUnmappedOptionalParams = false
+
+        for (param in params) {
+            val colIndex = colIndices[param.name!!.lowercase()]
+            if (colIndex != null)
+                readers.add(createReader(param.type, colIndex, param, className))
+            else
+                if (param.isOptional) hasUnmappedOptionalParams = true
+                else throw SQLException("ResultSet doesn't has column that maps to required parameter '${param.name}' " +
+                        "of '$className' primary constructor. If it's not necessary to read value for this parameter" +
+                        "from database, then just provide default value in its declaration.")
+        }
+        return readers
     }
 
     @PublishedApi
     internal fun <T: Any> readValues(valueType: KClass<T>, capacity: Int, con: Connection?) = doAction(con) { stmt ->
         val rs = stmt.executeQuery()
         val results = if (capacity >= 0) ArrayList<T>(capacity) else ArrayList()
-        val (read, colIndex, type) = createReader(valueType.createType(),1, "value", "")
+        val (read, colIndex, type) = createReader(valueType.createType(),1, null, "value")
         while (rs.next())
             @Suppress("UNCHECKED_CAST")
             results.add(rs.read(colIndex, type) as T)
         results
     }
 
-    private fun createReader(type: KType, colIndex: Int, paramName: String?, className: String?):
-            Triple<ResultSet.(Int, KType) -> Any?, Int, KType>
+    private fun createReader(type: KType, colIndex: Int, param: KParameter?, className: String?): Reader
     {
         val kClassType = (type.classifier as? KClass<*>)
         val classType = kClassType?.java
@@ -185,13 +219,13 @@ class Cmd @PublishedApi internal constructor(
             SQLXML::class -> { i, _ -> getSQLXML(i) }
             UUID::class -> { i, _ -> getObject(i) } // Not guaranteed for all DB, but supported at least by Postgres.
 
-            else -> throw SqlPalException("Property '$paramName' of $className class has type '${type.classifier}', " +
+            else -> throw SqlPalException("Property '${param?.name}' of $className class has type '${type.classifier}', " +
                     "for witch mapping to SQL type is not implemented. " +
                     "To provide mapper for '${type.classifier}' add it to Sql.valueMappers " +
                     "to support it across the entire app, or annotate this property with @Mapper annotation."
             )
         }
-        return Triple(reader, colIndex, valueType)
+        return Reader(reader, colIndex, valueType, param)
     }
 
     private fun getCustomReader(type: KType): KFunction2<ResultSet, Int, Any?>? {
