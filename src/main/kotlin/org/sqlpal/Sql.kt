@@ -104,6 +104,15 @@ object Sql: Interpolator<Any, Cmd> {
     @Volatile
     var useEnumArrays = true
 
+    /** true - use camelCase for names of database objects (tables, columns, user-defined types).
+     *
+     * false (the default) - use snake_case.
+     *
+     * Value affects only generation of SQL queries, as reading of query results
+     * already considers all possible differences in naming. */
+    @Volatile
+    var useCamelCase: Boolean = false
+
     override fun interpolate(parts: () -> List<String>, params: () -> List<Any>): Cmd {
         val strings = parts()
         val params = params()

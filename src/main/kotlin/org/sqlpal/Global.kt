@@ -647,4 +647,4 @@ internal fun getParamsCustomNames(classType: KClass<*>, params: List<KParameter>
 @PublishedApi
 internal fun customName(type: KAnnotatedElement) = type.findAnnotation<SqlName>()?.name
 @PublishedApi
-internal fun toDbCase(name: String) = Cmd.camel2Snake(name)
+internal fun toDbCase(name: String) = if (Sql.useCamelCase) name else Cmd.camel2Snake(name)
