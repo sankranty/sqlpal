@@ -14,7 +14,7 @@ import kotlin.reflect.full.memberProperties
 
 /** Runs specified block, providing connection, that is committed after block is executed or rolled back on exception.
  * @param block to execute within transaction. */
-inline fun <T> transaction(block: (Connection) -> T) = Sql.dataSource.connection.use { transaction(it, block) }
+inline fun <T> transaction(block: (Connection) -> T) = Sql.withConnection { transaction(it, block) }
 
 /** Runs specified block and commit provided connection after block is executed or roll it back on exception.
  * @param connection that is committed or rolled back after execution.

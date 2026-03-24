@@ -14,9 +14,7 @@ import org.sqlpal.*
 suspend fun main(args: Array<String>)
 {
     val base = if (args.contains("big")) "test_big" else "test"
-    Sql.dataSource.jdbcUrl = "jdbc:postgresql://localhost:5431/$base"
-    Sql.dataSource.username = base
-    Sql.dataSource.password = base
+    Sql.setDataSource("jdbc:postgresql://localhost:5431/$base", base, base)
 
     when {
         args.contains("ins") -> ins3()
@@ -370,7 +368,7 @@ fun insert(big: Boolean) {
     val thousandsOfRows = if (big) 1000 else 100
     for (i in 0..thousandsOfRows)
          generate1KInsert(i, batch)
-    Sql.dataSource.connection.prepareStatement(batch.toString()).execute()
+    Sql.withConnection { it.prepareStatement(batch.toString()).execute() }
 }
 
 fun generate1KInsert(iteration: Int, builder: StringBuilder) {

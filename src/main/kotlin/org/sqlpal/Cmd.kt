@@ -265,7 +265,7 @@ class Cmd @PublishedApi internal constructor(
         if (con != null)
             doActionOnConnection(con, autoGenColumns, isBatch, action)
         else
-            Sql.dataSource.connection.use { doActionOnConnection(it, autoGenColumns, isBatch, action) }
+            Sql.withConnection { doActionOnConnection(it, autoGenColumns, isBatch, action) }
 
     private inline fun <T> doActionOnConnection(con: Connection, autoGenColumns: Array<String>?,
                                                 isBatch: Boolean, action: (PreparedStatement) -> T) =

@@ -4,6 +4,8 @@ import com.zaxxer.hikari.HikariDataSource
 import io.exoquery.terpal.Interpolator
 import io.exoquery.terpal.InterpolatorFunction
 import io.exoquery.terpal.interpolatorBody
+import java.sql.Connection
+import javax.sql.DataSource
 import kotlin.reflect.*
 
 /** 'If' means - if value of next param is true, then continue normally, otherwise skip to line break. */
@@ -38,19 +40,69 @@ operator fun String.unaryMinus(): Cmd = interpolatorBody()
  * To inline parameter directly into string (instead of extracting it as bind parameter), use $[I]$ instead of $. */
 object Sql: Interpolator<Any, Cmd> {
 
-    val dataSource = HikariDataSource()
+    @Volatile
+    @PublishedApi
+    internal var internalDataSource: DataSource? = null
 
-    /** Collection of user defined mappers that are applied across entire application.
-     * Mapper is applied if value matches type specified as key.
-     * If you need custom processing only for particular property instead of entire application,
-     * then annotate it with [Mapper]. */
-    val valueMappers = mapOf<KClass<*>, ValueMapper>()
+    /** Sets datasource, that will be used to get connection
+     * when calling methods without explicitly providing a connection. */
+    fun setDataSource(dataSource: DataSource) {
+        this.internalDataSource = dataSource
+    }
+
+    /** Creates Hikari datasource, that will be used to get connection
+     * when calling methods without explicitly providing a connection.
+     * @param jdbcUrl database connection string in format "jdbc:driver-name://address:port/database-name"
+     * @param username username to connect to database.
+     * @param password password for specified user.
+     * @param schema default schema name to be set on connections.
+     * @param isReadOnly specifies if the connections will be created as read-only connections.
+     * @param isAutoCommit sets the default auto-commit behavior of connections in the pool.
+     * @param maximumPoolSize the maximum size that connection pool is allowed to reach,
+     * including both idle and in-use connections.
+     * Basically this value will determine the maximum number of actual connections to the database backend.
+     * @param minimumIdle the minimum number of idle connections to maintain in the pool,
+     * including both idle and in-use connections.
+     * If the idle connections dip below this value, pool will create additional connections. */
+    fun setDataSource(jdbcUrl: String, username: String, password: String,
+                      schema: String = "", isReadOnly: Boolean = false, isAutoCommit: Boolean = true,
+                      maximumPoolSize: Int = -1, minimumIdle: Int = -1) {
+        internalDataSource = HikariDataSource().also {
+            it.jdbcUrl = jdbcUrl
+            it.username = username
+            it.password = password
+            if (schema.isNotBlank()) it.schema = schema
+            it.isReadOnly = isReadOnly
+            it.isAutoCommit = isAutoCommit
+            if (maximumPoolSize >= 0) it.maximumPoolSize = maximumPoolSize
+            if (minimumIdle >= 0) it.minimumIdle = minimumIdle
+        }
+    }
+
+    /** Executes specified function block, providing connection from pool, and returning it to the pool after execution. */
+    inline fun <T> withConnection (block: (Connection) -> T): T {
+        val ds = internalDataSource ?: throw SqlPalException("Attempt to get connection from SqlPal datasource " +
+                "while datasource is not set. Call 'Sql.setDataSource' method before using any SqlPal methods, " +
+                "or use overloads that accept connection as parameter.")
+        return ds.connection.use(block)
+    }
+
+    internal val valueMappers = mutableMapOf<KClass<*>, ValueMapper>()
+
+    /** Adds user defined mapper, that is applied across entire application.
+     * Mapper is applied to read and write values of the specified type.
+     * If custom processing is needed only for particular property instead of entire application,
+     * then annotate property with [Mapper].
+     * @param type mapper will be applied to read and write values of this type.
+     * @param mapper user defined mapper to apply. */
+    fun addTypeMapper(type: KClass<*>, mapper: ValueMapper) = synchronized(valueMappers) { valueMappers[type] = mapper }
 
     /** Defines how [List] or [Array] of [enum] is stored.
      * If true and database supports arrays of enums (currently only PostgreSQL),
      * then store as array of enum type defined in database, that has the same name as [enum] class but in snake case.
      * Otherwise, store as array of strings. */
-    val useEnumArrays = true
+    @Volatile
+    var useEnumArrays = true
 
     override fun interpolate(parts: () -> List<String>, params: () -> List<Any>): Cmd {
         val strings = parts()
