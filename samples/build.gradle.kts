@@ -20,6 +20,11 @@ dependencies {
     testImplementation(kotlin("test"))
 }
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
 tasks.jar.configure {
     manifest {
         attributes("Main-Class" to "MainKt")
