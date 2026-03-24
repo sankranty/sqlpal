@@ -3,12 +3,8 @@ package org.sqlpal
 import java.sql.Connection
 import java.sql.ResultSet
 import java.sql.SQLException
-import kotlin.reflect.KClass
-import kotlin.reflect.KProperty
-import kotlin.reflect.KProperty0
-import kotlin.reflect.KMutableProperty0
-import kotlin.reflect.KProperty1
-import kotlin.reflect.KMutableProperty1
+import kotlin.reflect.*
+import kotlin.reflect.full.findAnnotation
 import kotlin.reflect.full.hasAnnotation
 import kotlin.reflect.full.memberProperties
 
@@ -86,12 +82,15 @@ inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null) =
 inline fun <reified T: Any> select(where: Cmd, capacity: Int = -1, con: Connection? = null, includeOptional: Boolean = true): ArrayList<T>
 {
     val sb = StringBuilder("SELECT ")
-    for (p in Cmd.getConstructor(T::class).parameters)
-        if (includeOptional || !p.isOptional) sb.append(Cmd.camel2Snake(p.name!!), ',')
+    val params = Cmd.getConstructor(T::class).parameters
+    val customNames = getParamsCustomNames(T::class, params)
+    for (p in params)
+        if (!p.isOptional || includeOptional)
+            sb.append(customNames[p] ?: toDbCase(p.name!!), ',')
     sb.deleteCharAt(sb.length - 1) // Remove trailing comma
 
     sb.append(" FROM ")
-    sb.append(Cmd.camel2Snake(T::class.simpleName!!))
+    sb.append(entityName(T::class))
     sb.append(" WHERE ")
     sb.append(where.sql)
 
@@ -251,14 +250,14 @@ inline fun <reified T: Any> insertMany(items: Iterable<T>, con: Connection? = nu
 @PublishedApi
 internal fun <T: Any> insertMany(itemClass: KClass<T>, items: Iterable<T>, con: Connection? = null): Int
 {
-    val tableName = Cmd.camel2Snake(itemClass.simpleName!!)
+    val tableName = entityName(itemClass::class)
     val sb = StringBuilder("INSERT INTO $tableName (")
 
     // Get props from javaClass.kotlin, as props obtained from ::class does not allow to get prop value.
     val props = itemClass.memberProperties.filter { !it.hasAnnotation<AutoGen>() }
 
     for (p in props)  {
-        sb.append(Cmd.camel2Snake(p.name))
+        sb.append(colName(p))
         sb.append(',')
     }
     sb.deleteCharAt(sb.length - 1) // Remove trailing comma
@@ -407,7 +406,7 @@ fun set(vararg items: Pair<KProperty0<*>, Any?>) = PropsToUpdate(
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return number of rows affected. */
 fun update(entity: Any, params: List<Pair<String, Any?>>, con: Connection? = null): Int {
-    val sb = StringBuilder("UPDATE ${tableName(entity)} SET ")
+    val sb = StringBuilder("UPDATE ${entityName(entity::class)} SET ")
 
     val bindParams = ArrayList<Any?>(params.size)
     params.forEach {
@@ -431,7 +430,7 @@ fun update(entity: Any, params: List<Pair<String, Any?>>, con: Connection? = nul
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return number of rows deleted. */
 fun delete(entity: Any, con: Connection? = null): Int {
-    val sb = StringBuilder("DELETE FROM ${tableName(entity)}")
+    val sb = StringBuilder("DELETE FROM ${entityName(entity::class)}")
     val bindParams = ArrayList<Any?>(1)
     buildWhereWithId(entity, sb, bindParams)
     return exec(Cmd(sb.toString(), bindParams), con)
@@ -446,7 +445,7 @@ fun delete(entity: Any, con: Connection? = null): Int {
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return number of rows deleted. */
 inline fun <reified T: Any> delete(where: Cmd, con: Connection? = null): Int {
-    val sb = StringBuilder("DELETE FROM ${Cmd.camel2Snake(T::class.simpleName!!)} WHERE ${where.sql}")
+    val sb = StringBuilder("DELETE FROM ${entityName(T::class)} WHERE ${where.sql}")
     return exec(Cmd(sb.toString(), where.bindParams), con)
 }
 
@@ -503,7 +502,7 @@ private inline fun execInsertOrUpdate(entity: Any, propsToUpdate: PropsToUpdate?
                                       statement: String, paramPlaceholder: String,
                                       buildParamsClause: (Any, StringBuilder, ArrayList<Any?>) -> Unit)
 {
-    val tableName = tableName(entity)
+    val tableName = entityName(entity::class)
     val sb = StringBuilder(statement.format(tableName))
 
     // Get props from javaClass.kotlin, as props obtained from ::class does not allow to get prop value.
@@ -517,12 +516,12 @@ private inline fun execInsertOrUpdate(entity: Any, propsToUpdate: PropsToUpdate?
 
         propsToUpdate.include != null -> {
             for (p in propsToUpdate.include) {
-                appendCol(sb, Cmd.camel2Snake(p.name), paramPlaceholder)
+                appendCol(sb, colName(p), paramPlaceholder)
                 addPropToBindParams(entity, p, bindParams)
             }
             if (updateAutoGenValues)
                 for (p in props)
-                    addToRefreshListIfAutoGen(p, true, autoGenColumns, Cmd.camel2Snake(p.name))
+                    addToRefreshListIfAutoGen(p, true, autoGenColumns, colName(p))
         }
         propsToUpdate.exclude != null ->
             for (p in props)
@@ -536,6 +535,7 @@ private inline fun execInsertOrUpdate(entity: Any, propsToUpdate: PropsToUpdate?
     val autoGenArr = if (updateAutoGenValues) autoGenColumns.keys.toTypedArray() else null
     val generatedValues = execWithResults(Cmd(sb.toString(), bindParams), autoGenArr, con)
         ?: throw SQLException("INSERT/UPDATE command on $tableName table affected no rows.")
+    // TODO: Remove exception as it's normal that UPDATE can affect no rows if nothing matches criteria
 
     if (updateAutoGenValues)
         for ((colName, value) in generatedValues)
@@ -545,7 +545,7 @@ private inline fun execInsertOrUpdate(entity: Any, propsToUpdate: PropsToUpdate?
 private fun processProp(entity: Any, p: KProperty<*>, bindParams: ArrayList<Any?>,
                         sb: StringBuilder, paramPlaceholder: String,
                         updateAutoGenValues: Boolean, autoGenColumns: RefreshMap) {
-    val colName = Cmd.camel2Snake(p.name)
+    val colName = colName(p)
     if (!addToRefreshListIfAutoGen(p, updateAutoGenValues, autoGenColumns, colName)) {
         appendCol(sb, colName, paramPlaceholder)
         addPropToBindParams(entity, p, bindParams)
@@ -570,7 +570,7 @@ private fun appendCol(sb: StringBuilder, colName: String, paramPlaceholder: Stri
 private fun buildWhereWithId(entity: Any, sb: StringBuilder, bindParams:ArrayList<Any?>) {
     val id = Cmd.getIdProperty(entity.javaClass.kotlin)
     sb.append(" WHERE ")
-    sb.append(Cmd.camel2Snake(id.name))
+    sb.append(colName(id))
     sb.append(" = ?")
     addPropToBindParams(entity, id, bindParams)
 }
@@ -598,4 +598,28 @@ private fun addPropToBindParams(entity: Any, p: KProperty<*>, bindParams: Mutabl
     bindParams.add(value)
 }
 
-private fun tableName(entity: Any) = Cmd.camel2Snake(entity::class.simpleName!!)
+@PublishedApi
+internal fun entityName(type: KClass<*>) = customName(type) ?: toDbCase(type.simpleName!!)
+@PublishedApi
+internal fun colName(prop: KProperty<*>) = customName(prop) ?: toDbCase(prop.name)
+
+// Until version 2.2 Kotlin did not support applying single annotation on both constructor parameter and property.
+// Thus, to check that parameter is annotated we need to check property with the same name.
+// So added this method to get custom name for all parameters at once.
+@PublishedApi
+internal fun getParamsCustomNames(classType: KClass<*>, params: List<KParameter>): Map<KParameter, String> {
+    val customNames = mutableMapOf<KParameter, String>()
+    for (prop in classType.memberProperties) {
+        val name = customName(prop)
+        if (name != null) {
+            val param = params.first { prop.name == it.name }
+            customNames[param] = name
+        }
+    }
+    return customNames
+}
+
+@PublishedApi
+internal fun customName(type: KAnnotatedElement) = type.findAnnotation<SqlName>()?.name
+@PublishedApi
+internal fun toDbCase(name: String) = Cmd.camel2Snake(name)

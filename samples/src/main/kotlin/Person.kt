@@ -20,9 +20,11 @@ class Person (
     //var edu: List<Education>?
 )
 
+@SqlName("\"some table\"")
 data class Person3 (
     @Id @AutoGen
     var id: Long? = null,
+    @SqlName("\"first-name\"")
     var name: String,
     var num: List<Int>,
     var num2: Array<Int>,
@@ -52,6 +54,8 @@ enum class Gender {
     male,
     female
 }
+
+@SqlName("edu")
 enum class Education {
     undefined,
     school,

@@ -22,9 +22,8 @@ class Cmd @PublishedApi internal constructor(
     internal companion object
     {
         inline fun <reified T: Any> createFindByIdCmd(id: Long): Cmd {
-            val table = camel2Snake(T::class.simpleName!!)
-            val idCol = camel2Snake(getIdProperty(T::class).name)
-            return Sql("SELECT * FROM $I$table WHERE $I$idCol = $id")
+            val idCol = colName(getIdProperty(T::class))
+            return Sql("SELECT * FROM $I${entityName(T::class)} WHERE $I$idCol = $id")
         }
 
         fun <T: Any> getConstructor(type: KClass<T>): KFunction<T> {
@@ -61,7 +60,7 @@ class Cmd @PublishedApi internal constructor(
         }
 
         /** Does next:
-         * - removes quotes (in case they were not already removed by JDBC driver),
+         * - removes quotes (if quoted),
          * - removes chars that can be used as delimiters in names in database,
          * - converts to lowercase. */
         fun String.toPlainName(): String {
@@ -115,7 +114,7 @@ class Cmd @PublishedApi internal constructor(
 
         // Create reader for each constructor parameter
         val constr = getConstructor(classType)
-        val readers = createReaders(constr.parameters, colIndices, classType.qualifiedName)
+        val readers = createReaders(constr.parameters, colIndices, classType)
         val values = arrayOfNulls<Any>(readers.count()) // Array where to read values for each row
 
         // If primary constructor has optional params, for which there are no corresponding columns,
@@ -143,19 +142,23 @@ class Cmd @PublishedApi internal constructor(
         results
     }
 
-    private fun createReaders(params: List<KParameter>, colIndices: Map<String, Int>, className: String?): List<Reader> {
+    private fun createReaders(params: List<KParameter>, colIndices: Map<String, Int>, classType: KClass<*>): List<Reader>
+    {
+        val customNames = getParamsCustomNames(classType, params)
         val readers = ArrayList<Reader>(params.size)
         hasUnmappedOptionalParams = false
-
         for (param in params) {
-            val colIndex = colIndices[param.name!!.lowercase()]
+            val paramName = customNames[param]?.toPlainName() ?: param.name!!.lowercase()
+            val colIndex = colIndices[paramName]
             if (colIndex != null)
-                readers.add(createReader(param.type, colIndex, param, className))
+                readers.add(createReader(param.type, colIndex, param, classType.qualifiedName))
             else
                 if (param.isOptional) hasUnmappedOptionalParams = true
-                else throw SQLException("ResultSet doesn't has column that maps to required parameter '${param.name}' " +
-                        "of '$className' primary constructor. If it's not necessary to read value for this parameter" +
-                        "from database, then just provide default value in its declaration.")
+                else throw SQLException("ResultSet doesn't has column that maps to required parameter " +
+                        "'${param.name}' of '${classType.qualifiedName}' primary constructor. " +
+                        "If it's not necessary to read value for this parameter from database, " +
+                        "then just provide default value in its declaration. If column name differs from " +
+                        "parameter name (besides case and delimiters), then annotate parameter with @SqlName.")
         }
         return readers
     }
@@ -324,7 +327,7 @@ class Cmd @PublishedApi internal constructor(
 
         val con = statement.connection
         if (Sql.useEnumArrays && con.metaData.databaseProductName.lowercase() == "postgresql") {
-            val sqlArray = con.createArrayOf(camel2Snake(componentType.simpleName!!), array)
+            val sqlArray = con.createArrayOf(entityName(componentType), array)
             statement.setArray(colIndex, sqlArray)
         } else
             statement.setObject(colIndex, array, Types.ARRAY)

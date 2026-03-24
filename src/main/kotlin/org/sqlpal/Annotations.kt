@@ -13,6 +13,15 @@ annotation class AutoGen
 @Target(AnnotationTarget.PROPERTY)
 annotation class Id
 
+/** Specifies name of database table, user type or column.
+ * Name is not quoted by default, thus quote it explicitly if required.
+ * @param name
+ * - for class - name of the table (or view) to map this class to.
+ * - for property - name of the column to map this property to.
+ * - for enum class - name of the user defined type to map this enum to. */
+@Target(AnnotationTarget.CLASS, AnnotationTarget.PROPERTY)
+annotation class SqlName(val name: String)
+
 /** Provides value mapper for particular property. If you need to set mapping for some type globally,
  * then add it to [Sql.valueMappers] with corresponding [ValueMapper].
  * @param mapper Specify type of object or class that implements [ValueMapper].
