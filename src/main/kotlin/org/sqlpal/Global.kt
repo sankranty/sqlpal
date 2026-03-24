@@ -79,22 +79,30 @@ inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null) =
  * @return [ArrayList] with objects of specified type, created from query results
  * by mapping names of constructor parameters to column names (case-insensitive, ignoring _ symbol).
  * If some property doesn't have corresponding column in result set, then move it from constructor to class body. */
-inline fun <reified T: Any> select(where: Cmd, capacity: Int = -1, con: Connection? = null, includeOptional: Boolean = true): ArrayList<T>
+inline fun <reified T: Any> select(where: Cmd, con: Connection? = null, capacity: Int = -1, includeOptional: Boolean = true): ArrayList<T> {
+    // Public inline function can't access private members, while it must be inline to get generic type.
+    // So implementation is moved to separate internal method, that receives type just as parameter.
+    val query = buildSelectQuery(T::class, where, includeOptional)
+    return read(query, capacity, con)
+}
+
+@PublishedApi
+internal fun <T: Any> buildSelectQuery(type: KClass<T>, where: Cmd, includeOptional: Boolean = true): Cmd
 {
     val sb = StringBuilder("SELECT ")
-    val params = Cmd.getConstructor(T::class).parameters
-    val customNames = getParamsCustomNames(T::class, params)
+    val params = Cmd.getConstructor(type).parameters
+    val customNames = getParamsCustomNames(type, params)
     for (p in params)
         if (!p.isOptional || includeOptional)
             sb.append(customNames[p] ?: toDbCase(p.name!!), ',')
     sb.deleteCharAt(sb.length - 1) // Remove trailing comma
 
     sb.append(" FROM ")
-    sb.append(entityName(T::class))
+    sb.append(entityName(type))
     sb.append(" WHERE ")
     sb.append(where.sql)
 
-    return read(Cmd(sb.toString(), where.bindParams), capacity, con)
+    return Cmd(sb.toString(), where.bindParams)
 }
 
 /** Runs specified query and returns single value from the first column of the first returned row.
