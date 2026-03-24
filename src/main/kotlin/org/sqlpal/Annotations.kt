@@ -9,6 +9,13 @@ import kotlin.reflect.KClass
 @Target(AnnotationTarget.PROPERTY)
 annotation class AutoGen
 
+/** Excludes annotated property from INSERT and UPDATE operations.
+ * It's similar to [AutoGen], except that value is not requested to be read from INSERT/UPDATE results.
+ * It has no effect on SELECT queries as optional constructor parameter is skipped anyway
+ * if there is no corresponding column in result set. */
+@Target(AnnotationTarget.PROPERTY)
+annotation class SqlIgnore
+
 /** Indicates that column is primary key. Is used to determine ID for UPDATE statement. */
 @Target(AnnotationTarget.PROPERTY)
 annotation class Id

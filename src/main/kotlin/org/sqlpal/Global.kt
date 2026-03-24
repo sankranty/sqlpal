@@ -269,7 +269,7 @@ fun insert(entity: Any, con: Connection? = null, updateAutoGenValues: Boolean = 
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return number of inserted rows. */
 inline fun <reified T: Any> insertMany(items: Iterable<T>, con: Connection? = null) =
-    // Public inline function can't access private members, but it must be inline to get generic type.
+    // Public inline function can't access private members, while it must be inline to get generic type.
     // So implementation is moved to separate internal method, that receives type just as parameter.
     insertMany(T::class, items, con)
 
@@ -279,8 +279,7 @@ internal fun <T: Any> insertMany(itemClass: KClass<T>, items: Iterable<T>, con: 
     val tableName = entityName(itemClass::class)
     val sb = StringBuilder("INSERT INTO $tableName (")
 
-    // Get props from javaClass.kotlin, as props obtained from ::class does not allow to get prop value.
-    val props = itemClass.memberProperties.filter { !it.hasAnnotation<AutoGen>() }
+    val props = itemClass.memberProperties.filter { !it.hasAnnotation<SqlIgnore>() && !it.hasAnnotation<AutoGen>() }
 
     for (p in props)  {
         sb.append(colName(p))
@@ -572,7 +571,7 @@ private fun processProp(entity: Any, p: KProperty<*>, bindParams: ArrayList<Any?
                         sb: StringBuilder, paramPlaceholder: String,
                         updateAutoGenValues: Boolean, autoGenColumns: RefreshMap) {
     val colName = colName(p)
-    if (!addToRefreshListIfAutoGen(p, updateAutoGenValues, autoGenColumns, colName)) {
+    if (!p.hasAnnotation<SqlIgnore>() && !addToRefreshListIfAutoGen(p, updateAutoGenValues, autoGenColumns, colName)) {
         appendCol(sb, colName, paramPlaceholder)
         addPropToBindParams(entity, p, bindParams)
     }
