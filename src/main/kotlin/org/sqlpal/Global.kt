@@ -72,6 +72,21 @@ inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null) =
  * After conditions can be specified any clause that goes after WHERE (e.g. ORDER BY or LIMIT).
  * @param capacity If specified, sets initial capacity of [ArrayList] where results are stored.
  * It does not limit number of rows fetched from database. You can add LIMIT in [where] query.
+ * @param includeOptional true (the default) to add to SELECT clause parameters that has default values, otherwise false.
+ * @return [ArrayList] with objects of specified type, created from query results
+ * by mapping names of constructor parameters to column names (case-insensitive, ignoring _ symbol).
+ * If some property doesn't have corresponding column in result set, then move it from constructor to class body. */
+inline fun <reified T: Any> select(where: Cmd, capacity: Int = -1, includeOptional: Boolean = true) =
+    select<T>(where, null, capacity, includeOptional)
+
+/** Executes SELECT with columns specified from primary constructor parameters
+ * and WHERE clause content from [where] parameter, considering that:
+ * - table is named as class, but in snake case,
+ * - columns are named as primary constructor parameters, but in snake case.
+ * @param where WHERE clause content specified with -"..." or -"""...""" syntax (see [Sql] for details).
+ * After conditions can be specified any clause that goes after WHERE (e.g. ORDER BY or LIMIT).
+ * @param capacity If specified, sets initial capacity of [ArrayList] where results are stored.
+ * It does not limit number of rows fetched from database. You can add LIMIT in [where] query.
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
