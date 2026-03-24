@@ -244,24 +244,40 @@ class Cmd @PublishedApi internal constructor(
         else
             { i, _ -> getValue(i) }
 
-    fun doBatch(items: Iterable<Any>, con: Connection?, fillItemParams: (Any, MutableList<Any?>) -> Unit): IntArray =
-        doAction(null, con, true) {
+    /** Calls [fillItemParams] for each item in [items] and to set bind parameters and executes query as batch.
+     * @param con If specified, then command is executed on it, and it is not closed after use.
+     * Otherwise, connection is obtained from pool and released after use.
+     * @param items iterable source of items for bach processing.
+     * @param fillItemParams is called for each item in [items].
+     * First argument is item to process, second is list where to add values that will be set as bind parameters.
+     * @return array where each element is number of affected rows by each item.*/
+    fun doBatch(con: Connection?, items: Iterable<Any>, fillItemParams: (Any, MutableList<Any?>) -> Unit): IntArray =
+        doAction(con, null, true) {
             for (item in items) {
                 bindParams.clear()
                 fillItemParams(item, bindParams)
-                for (i in 1..bindParams.count())
-                    setBindParam(bindParams[i - 1], i, it)
+                setBindParams(it)
                 it.addBatch()
             }
             it.executeBatch()
         }
 
-    /** Runs specified action with [PreparedStatement]. */
+    /** Runs specified action with [PreparedStatement].
+     * @param con If specified, then command is executed on it, and it is not closed after use.
+     * Otherwise, connection is obtained from pool and released after use.
+     * @param action to execute with [PreparedStatement].
+     * @return number of rows affected. */
     fun <T> doAction(con: Connection?, action: (PreparedStatement) -> T) =
-        doAction(null, con, false, action)
+        doAction(con, null, false, action)
 
-    /** Runs specified action with [PreparedStatement] and specified columns which values should be returned. */
-    fun <T> doAction(autoGenColumns: Array<String>?, con: Connection?, isBatch: Boolean = false, action: (PreparedStatement) -> T) =
+    /** Runs specified action with [PreparedStatement] and specified columns which values should be returned.
+     * @param con If specified, then command is executed on it, and it is not closed after use.
+     * Otherwise, connection is obtained from pool and released after use.
+     * @param autoGenColumns array where to store values from auto-generated columns.
+     * @param isBatch if true, then bind parameters are not set from [bindParams] as batch assumes multiple statements.
+     * @param action to execute with [PreparedStatement].
+     * @return number of rows affected. */
+    fun <T> doAction(con: Connection?, autoGenColumns: Array<String>?, isBatch: Boolean = false, action: (PreparedStatement) -> T) =
         if (con != null)
             doActionOnConnection(con, autoGenColumns, isBatch, action)
         else
@@ -270,53 +286,56 @@ class Cmd @PublishedApi internal constructor(
     private inline fun <T> doActionOnConnection(con: Connection, autoGenColumns: Array<String>?,
                                                 isBatch: Boolean, action: (PreparedStatement) -> T) =
         con.prepareStatement(sql, autoGenColumns).use {
-            if (!isBatch) // For batch params will be set inside action.
-                for (i in 1..bindParams.count())
-                    setBindParam(bindParams[i - 1], i, it)
+            // For batch params will be set inside action.
+            if (!isBatch) setBindParams(it)
             action(it)
         }
 
-    private fun setBindParam(paramValue: Any?, index: Int, statement: PreparedStatement) {
-        if (paramValue == null) {
-            statement.setObject(index, null)
-            return
-        }
-        val (value, componentType) = if (paramValue is ListAndType)
-            paramValue.list to paramValue.componentType
-        else
-            paramValue to paramValue::class.java.componentType?.kotlin
+    private fun setBindParams(statement: PreparedStatement) {
+        for (index in 1..bindParams.count()) {
+            val paramValue = bindParams[index - 1]
 
-        if (Sql.valueMappers[value::class]?.writeValue(value, statement, index, componentType) == true)
-            return
-
-        when (value) {
-            is Enum<*> -> statement.setObject(index, value, Types.OTHER)
-            is List<*> -> {
-                if (componentType == null) throw IllegalArgumentException(
-                    "List is not wrapped with ListAndType object, what indicates a bug or incorrect use of SqlPal.")
-
-                if (componentType.java.isEnum)
-                    setEnumArray({ value[it] }, value.size, componentType, index, statement)
-                else {
-                    // JDBC supports arrays but not lists, so convert List to Array.
-                    // Array must be of certain type, not array of Any, otherwise driver would not be able to figure out
-                    // to what SQL type map it to. So create it via reflection to explicitly specify type.
-                    @Suppress("UNCHECKED_CAST")
-                    val array = java.lang.reflect.Array.newInstance(componentType.javaObjectType, value.size) as Array<Any?>
-                    for (i in value.indices)
-                        array[i] = value[i]
-                    statement.setObject(index, array, Types.ARRAY)
-                }
+            if (paramValue == null) {
+                statement.setObject(index, null)
+                return
             }
-            is Array<*> ->
-                if (componentType!!.java.isEnum)
-                    setEnumArray({ value[it] }, value.size, componentType, index, statement)
-                else
-                    statement.setObject(index, value, Types.ARRAY)
-            is ZonedDateTime -> statement.setObject(index, value.toOffsetDateTime())
-            is Instant -> statement.setObject(index, value.atOffset(ZoneOffset.UTC))
-            is Currency -> statement.setString(index, value.toString())
-            else -> statement.setObject(index, value) // Other primitive types are directly supported by JDBC.
+            val (value, componentType) = if (paramValue is ListAndType)
+                paramValue.list to paramValue.componentType
+            else
+                paramValue to paramValue::class.java.componentType?.kotlin
+
+            if (Sql.valueMappers[value::class]?.writeValue(value, statement, index, componentType) == true)
+                return
+
+            when (value) {
+                is Enum<*> -> statement.setObject(index, value, Types.OTHER)
+                is List<*> -> {
+                    if (componentType == null) throw IllegalArgumentException(
+                        "List is not wrapped with ListAndType object, what indicates a bug or incorrect use of SqlPal.")
+
+                    if (componentType.java.isEnum)
+                        setEnumArray({ value[it] }, value.size, componentType, index, statement)
+                    else {
+                        // JDBC supports arrays but not lists, so convert List to Array.
+                        // Array must be of certain type, not array of Any, otherwise driver would not be able to figure out
+                        // to what SQL type map it to. So create it via reflection to explicitly specify type.
+                        @Suppress("UNCHECKED_CAST")
+                        val array = java.lang.reflect.Array.newInstance(componentType.javaObjectType, value.size) as Array<Any?>
+                        for (i in value.indices)
+                            array[i] = value[i]
+                        statement.setObject(index, array, Types.ARRAY)
+                    }
+                }
+                is Array<*> ->
+                    if (componentType!!.java.isEnum)
+                        setEnumArray({ value[it] }, value.size, componentType, index, statement)
+                    else
+                        statement.setObject(index, value, Types.ARRAY)
+                is ZonedDateTime -> statement.setObject(index, value.toOffsetDateTime())
+                is Instant -> statement.setObject(index, value.atOffset(ZoneOffset.UTC))
+                is Currency -> statement.setString(index, value.toString())
+                else -> statement.setObject(index, value) // Other primitive types are directly supported by JDBC.
+            }
         }
     }
 

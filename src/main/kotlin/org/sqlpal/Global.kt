@@ -289,7 +289,7 @@ internal fun <T: Any> insertMany(itemClass: KClass<T>, items: Iterable<T>, con: 
     appendValuesClause(sb, props.size)
 
     val insertedCounts = Cmd(sb.toString(), ArrayList(props.size))
-        .doBatch(items, con) { item, params ->
+        .doBatch(con, items) { item, params ->
             for (p in props) addPropToBindParams(item, p, params)
         }
     return insertedCounts.sum()
@@ -483,7 +483,7 @@ inline fun <reified T: Any> delete(where: Cmd, con: Connection? = null): Int {
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return map of colName - value for inserted/updated row. Map contains columns specified in [autoGenColumns].
  * It is useful to get values of auto-generated columns (e.g. ID). Returns null if no rows are updated. */
-fun execWithResults(query: Cmd, autoGenColumns: Array<String>? = null, con: Connection? = null) = query.doAction(autoGenColumns, con) {
+fun execWithResults(query: Cmd, autoGenColumns: Array<String>? = null, con: Connection? = null) = query.doAction(con, autoGenColumns) {
     if (it.executeUpdate() == 0) return@doAction null
     it.generatedKeys.use {  rs ->
         rs.next()
