@@ -12,19 +12,22 @@ import kotlin.reflect.full.memberProperties
 //--------------------- Contains public methods of SqlPal ----------------------//
 //////////////////////////////////////////////////////////////////////////////////
 
-/** Runs specified method, providing connection that is committed after method returns or rolled back on exception.
- * @param connection If specified, then transaction is executed on it, otherwise connection is obtained from pool.
- * @param block method to execute within transaction. */
-inline fun <T> transaction(connection: Connection? = null, block: (Connection) -> T): T {
-    val con = connection ?: Sql.dataSource.connection
+/** Runs specified block, providing connection, that is committed after block is executed or rolled back on exception.
+ * @param block to execute within transaction. */
+inline fun <T> transaction(block: (Connection) -> T) = Sql.dataSource.connection.use { transaction(it, block) }
+
+/** Runs specified block and commit provided connection after block is executed or roll it back on exception.
+ * @param connection that is committed or rolled back after execution.
+ * @param block to execute within transaction. */
+inline fun <T> transaction(connection: Connection, block: (Connection) -> T): T {
     try {
-        con.autoCommit = false
-        val result = block(con)
-        con.commit()
+        connection.autoCommit = false
+        val result = block(connection)
+        connection.commit()
         return result
     }
     catch (ex: Exception) {
-        con.rollback()
+        connection.rollback()
         throw ex
     }
 }
