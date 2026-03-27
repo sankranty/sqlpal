@@ -174,6 +174,26 @@ class Cmd @PublishedApi internal constructor(
         results
     }
 
+    internal fun readResults(entity: Any, con: Connection?, autoGenColumns: RefreshMap): Int {
+        val autoGenArr = if (autoGenColumns.isNotEmpty()) autoGenColumns.keys.toTypedArray() else null
+
+        return doAction(con, autoGenArr) { cmd ->
+            val rowsAffected = cmd.executeUpdate()
+            if (rowsAffected > 0 && autoGenArr != null)
+                cmd.generatedKeys.use { rs ->
+                    rs.next()
+                    val className = entity::class.qualifiedName
+                    for (i in 1..rs.metaData.columnCount) {
+                        val prop = autoGenColumns[rs.metaData.getColumnLabel(i)] ?: continue
+                        val (read, _, type) = createReader(prop.returnType, i, null, className)
+                        val value = rs.read(i, type)
+                        prop.set(entity, value)
+                    }
+                }
+            rowsAffected
+        }
+    }
+
     private fun createReader(type: KType, colIndex: Int, param: KParameter?, className: String?): Reader
     {
         val kClassType = (type.classifier as? KClass<*>)
