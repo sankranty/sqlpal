@@ -21,11 +21,6 @@ class Cmd @PublishedApi internal constructor(
     @PublishedApi
     internal companion object
     {
-        inline fun <reified T: Any> createFindByIdCmd(id: Long): Cmd {
-            val idCol = colName(getIdProperty(T::class))
-            return Sql("SELECT * FROM $I${entityName(T::class)} WHERE $I$idCol = $id")
-        }
-
         fun <T: Any> getConstructor(type: KClass<T>): KFunction<T> {
             val error = "Class must have primary constructor where are declared all properties that should be read from database."
             val constr = type.primaryConstructor ?: throw SqlPalException(error)
@@ -91,8 +86,6 @@ class Cmd @PublishedApi internal constructor(
         val param: KParameter?
     )
 
-    private var hasUnmappedOptionalParams = false
-
     // Public functions, that we provide for reading, are marked as inline, to allow to specify generic type
     // (because call to T::class requires method to be inline), what is not desired,
     // as implementation is pretty large, and it will be called in many places in client code,
@@ -112,16 +105,16 @@ class Cmd @PublishedApi internal constructor(
             colIndices[name] = i
         }
 
-        // Create reader for each constructor parameter
+        // Create reader for each constructor parameter and properties (if there are corresponding columns)
         val constr = getConstructor(classType)
-        val readers = createReaders(constr.parameters, colIndices, classType)
-        val values = arrayOfNulls<Any>(readers.count()) // Array where to read values for each row
+        val (hasUnmappedOptionalParams, paramReaders, propReaders) = createReaders(constr.parameters, colIndices, classType)
+        val values = arrayOfNulls<Any>(paramReaders.count()) // Array where to read values for each row
 
         // If primary constructor has optional params, for which there are no corresponding columns,
         // then also create map, to specify only parameters, that have columns in result set.
         val createObject = if (hasUnmappedOptionalParams) {
             val map = mutableMapOf<KParameter, Any?>()
-            for (r in readers) map[r.param!!] = null
+            for (r in paramReaders) map[r.param!!] = null
             {
                 var i = 0
                 for (entry in map) entry.setValue(values[i++])
@@ -133,25 +126,33 @@ class Cmd @PublishedApi internal constructor(
         // For each row in ResultSet read values by readers and pass them to primary constructor.
         val results = if (capacity >= 0) ArrayList<T>(capacity) else ArrayList()
         while (rs.next()) {
-            for (i in readers.indices) {
-                val (read, colIndex, type) = readers[i]
+            for (i in paramReaders.indices) {
+                val (read, colIndex, type) = paramReaders[i]
                 values[i] = rs.read(colIndex, type)
             }
-            results.add(createObject())
+            val obj = createObject()
+            if (propReaders != null)
+                for ((prop, reader) in propReaders) {
+                    val (read, colIndex, type) = reader
+                    val value = rs.read(colIndex, type)
+                    prop.set(obj, value)
+                }
+            results.add(obj)
         }
         results
     }
 
-    private fun createReaders(params: List<KParameter>, colIndices: Map<String, Int>, classType: KClass<*>): List<Reader>
+    private fun <T: Any> createReaders(params: List<KParameter>, colIndices: MutableMap<String, Int>, classType: KClass<T>):
+            Triple<Boolean, List<Reader>, List<Pair<KMutableProperty1<T, Any?>, Reader>>?>
     {
         val customNames = getParamsCustomNames(classType, params)
-        val readers = ArrayList<Reader>(params.size)
-        hasUnmappedOptionalParams = false
+        val paramReaders = ArrayList<Reader>(params.size)
+        var hasUnmappedOptionalParams = false
         for (param in params) {
             val paramName = customNames[param]?.toPlainName() ?: param.name!!.lowercase()
-            val colIndex = colIndices[paramName]
+            val colIndex = colIndices.remove(paramName) // remove instead of get to check further if there are any columns left
             if (colIndex != null)
-                readers.add(createReader(param.type, colIndex, param, classType.qualifiedName))
+                paramReaders.add(createReader(param.type, colIndex, param, classType.qualifiedName))
             else
                 if (param.isOptional) hasUnmappedOptionalParams = true
                 else throw SQLException("ResultSet doesn't has column that maps to required parameter " +
@@ -160,7 +161,27 @@ class Cmd @PublishedApi internal constructor(
                         "then just provide default value in its declaration. If column name differs from " +
                         "parameter name (besides case and delimiters), then annotate parameter with @SqlName.")
         }
-        return readers
+        // If there are columns in result set besides that correspond to primary constructor parameters,
+        // then try to map them to class properties.
+        val propReaders = if (colIndices.isNotEmpty()) {
+            val readers = mutableListOf<Pair<KMutableProperty1<T, Any?>, Reader>>()
+            for (prop in classType.memberProperties) {
+                val propName = customName(prop)?.toPlainName() ?: prop.name.lowercase()
+                val colIndex = colIndices[propName]
+                if (colIndex != null) {
+                    @Suppress("UNCHECKED_CAST")
+                    val p = prop as? KMutableProperty1<T, Any?>
+                        ?: throw SqlPalException("Result set contains column that corresponds to property " +
+                                "'${prop.name}' of '${classType.qualifiedName}' class, but property is not mutable." +
+                                "Change property declaration from val to var.")
+                    val reader = createReader(prop.returnType, colIndex, null, classType.qualifiedName)
+                    readers.add(p to reader)
+                }
+            }
+            readers
+        } else
+            null
+        return Triple(hasUnmappedOptionalParams, paramReaders, propReaders)
     }
 
     @PublishedApi

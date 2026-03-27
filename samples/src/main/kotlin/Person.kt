@@ -20,10 +20,13 @@ class Person (
     //var edu: List<Education>?
 )
 
-@SqlName("\"some table\"")
-data class Person3 (
+open class Base (
     @Id @AutoGen
     var id: Long? = null,
+)
+
+@SqlName("\"some table\"")
+data class Person3 (
     @SqlName("\"first-name\"")
     var name: String,
     var num: List<Int>,
@@ -32,7 +35,7 @@ data class Person3 (
     var edu2: List<Education>? = emptyList(),
     @SqlIgnore
     var gen: Gender = Gender.female
-)
+) : Base()
 
 data class Person2 (
     @Id @AutoGen

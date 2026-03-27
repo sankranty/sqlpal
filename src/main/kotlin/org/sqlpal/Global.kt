@@ -48,8 +48,8 @@ class SqlPalException(message: String) : Exception(message)
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return object of specified type, created from query results
- * by mapping names of constructor parameters to column names (case-insensitive, ignoring _ symbol).
- * If some property doesn't have corresponding column in result set, then move it from constructor to class body. */
+ * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
+ * If property doesn't have corresponding column, then annotate it with [SqlIgnore]. */
 inline fun <reified T: Any> selectById(id: Long, con: Connection? = null) =
     selectByIdOrNll<T>(id, con) ?: throw IllegalArgumentException("Record with ID $id was not found.")
 
@@ -62,10 +62,13 @@ inline fun <reified T: Any> selectById(id: Long, con: Connection? = null) =
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return object of specified type, created from query results
- * by mapping names of constructor parameters to column names (case-insensitive, ignoring _ symbol).
- * If some property doesn't have corresponding column in result set, then move it from constructor to class body. */
-inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null) =
-    readOneOrNull<T>(Cmd.createFindByIdCmd<T>(id), con)
+ * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
+ * If property doesn't have corresponding column, then annotate it with [SqlIgnore].*/
+inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null): T? {
+    val idCol = colName(Cmd.getIdProperty(T::class))
+    val query = buildSelectQuery(T::class, -"$I$idCol = $id")
+    return readOneOrNull(query, con)
+}
 
 /** Executes SELECT with columns specified from primary constructor parameters
  * and WHERE clause content from [where] parameter, considering that:
@@ -75,15 +78,17 @@ inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null) =
  * After conditions can be specified any clause that goes after WHERE (e.g. ORDER BY or LIMIT).
  * @param capacity If specified, sets initial capacity of [ArrayList] where results are stored.
  * It does not limit number of rows fetched from database. You can add LIMIT in [where] query.
- * @param includeOptional true (the default) to add to SELECT clause parameters that has default values, otherwise false.
+ * @param includeOptional true (the default) to include into SELECT clause constructor parameters
+ * that has default values and mutable properties declared in class body,
+ * otherwise are included only primary constructor parameters that does not have default value.
  * @return [ArrayList] with objects of specified type, created from query results
- * by mapping names of constructor parameters to column names (case-insensitive, ignoring _ symbol).
- * If some property doesn't have corresponding column in result set, then move it from constructor to class body. */
+ * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
+ * If property doesn't have corresponding column, then annotate it with [SqlIgnore] or set [includeOptional] to false. */
 inline fun <reified T: Any> select(where: Cmd, capacity: Int = -1, includeOptional: Boolean = true) =
     select<T>(where, null, capacity, includeOptional)
 
-/** Executes SELECT with columns specified from primary constructor parameters
- * and WHERE clause content from [where] parameter, considering that:
+/** Executes SELECT with columns specified from primary constructor parameters and mutable properties
+ * with WHERE clause content from [where] parameter, considering that:
  * - table is named as class, but in snake case,
  * - columns are named as primary constructor parameters, but in snake case.
  * @param where WHERE clause content specified with -"..." or -"""...""" syntax (see [Sql] for details).
@@ -93,13 +98,16 @@ inline fun <reified T: Any> select(where: Cmd, capacity: Int = -1, includeOption
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @param includeOptional true (the default) to add to SELECT clause parameters that has default values, otherwise false.
+ * @param includeOptional true (the default) to include into SELECT clause constructor parameters
+ * that has default values and mutable properties declared in class body,
+ * otherwise are included only primary constructor parameters that does not have default value.
  * @return [ArrayList] with objects of specified type, created from query results
- * by mapping names of constructor parameters to column names (case-insensitive, ignoring _ symbol).
- * If some property doesn't have corresponding column in result set, then move it from constructor to class body. */
+ * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
+ * If property doesn't have corresponding column, then annotate it with [SqlIgnore] or set [includeOptional] to false. */
 inline fun <reified T: Any> select(where: Cmd, con: Connection? = null, capacity: Int = -1, includeOptional: Boolean = true): ArrayList<T> {
-    // Public inline function can't access private members, while it must be inline to get generic type.
-    // So implementation is moved to separate internal method, that receives type just as parameter.
+    // Implementation is moved to separate method, that receives generic type just as parameter
+    // (and thus does not need to be inline), because this method will be called in many places in client code,
+    // so it will blow app work set if implementation will be inlined.
     val query = buildSelectQuery(T::class, where, includeOptional)
     return read(query, capacity, con)
 }
@@ -110,9 +118,20 @@ internal fun <T: Any> buildSelectQuery(type: KClass<T>, where: Cmd, includeOptio
     val sb = StringBuilder("SELECT ")
     val params = Cmd.getConstructor(type).parameters
     val customNames = getParamsCustomNames(type, params)
-    for (p in params)
-        if (!p.isOptional || includeOptional)
+
+    val props = mutableMapOf<String, KProperty<*>>()
+    for (p in type.memberProperties) props[p.name] = p
+
+    for (p in params) {
+        val prop = props.remove(p.name!!) // remove instead of get to process further only props that don't correspond to params
+        if ((!p.isOptional || includeOptional) && (prop == null || !prop.hasAnnotation<SqlIgnore>()))
             sb.append(customNames[p] ?: toDbCase(p.name!!), ',')
+    }
+    if (includeOptional)
+        for (p in props.values)
+            if (p is KMutableProperty<*> && !p.hasAnnotation<SqlIgnore>())
+                sb.append(colName(p), ',')
+
     sb.deleteCharAt(sb.length - 1) // Remove trailing comma
 
     sb.append(" FROM ")
@@ -150,8 +169,7 @@ inline fun <reified T: Any> readValues(query: Cmd, con: Connection? = null) =
     query.readValues(T::class, -1, con)
 
 /** Runs specified query and returns object of specified type, created from the first row of query result
- * by mapping names of constructor parameters to column names (case-insensitive, ignoring _ symbol).
- * If some property doesn't have corresponding column in result set, then move it from constructor to class body.
+ * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
  * If query returns no rows, then [IllegalArgumentException] is thrown.
  * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param con If specified, then command is executed on it, and it is not closed after use.
@@ -161,8 +179,7 @@ inline fun <reified T: Any> readOne(query: Cmd, con: Connection? = null) =
     readOneOrNull<T>(query, con) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
 
 /** Runs specified query and returns object of specified type, created from the first row of query result,
- * by mapping names of constructor parameters to column names (case-insensitive, ignoring _ symbol).
- * If some property doesn't have corresponding column in result set, then move it from constructor to class body.
+ * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
  * Returns null if query returned no rows.
  * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param con If specified, then command is executed on it, and it is not closed after use.
@@ -172,8 +189,7 @@ inline fun <reified T: Any> readOneOrNull(query: Cmd, con: Connection? = null) =
     query.read(T::class, 1, con).firstOrNull()
 
 /** Runs specified query and returns [ArrayList] with objects of specified type, created from query results
- * by mapping names of constructor parameters to column names (case-insensitive, ignoring _ symbol).
- * If some property doesn't have corresponding column in result set, then move it from constructor to class body.
+ * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
  * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
@@ -182,8 +198,7 @@ inline fun <reified T: Any> read(query: Cmd, con: Connection? = null) =
     query.read(T::class, -1, con)
 
 /** Runs specified query and returns [ArrayList] with objects of specified type, created from query results
- * by mapping names of constructor parameters to column names (case-insensitive, ignoring _ symbol).
- * If some property doesn't have corresponding column in result set, then move it from constructor to class body.
+ * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
  * @param query SELECT query specified with -"..." or -"""...""" syntax.
  * @param capacity If specified, sets initial capacity of [ArrayList] where results are stored.
  * It does not limit number of rows fetched from database.
@@ -629,7 +644,6 @@ internal fun colName(prop: KProperty<*>) = customName(prop) ?: toDbCase(prop.nam
 // Until version 2.2 Kotlin did not support applying single annotation on both constructor parameter and property.
 // Thus, to check that parameter is annotated we need to check property with the same name.
 // So added this method to get custom name for all parameters at once.
-@PublishedApi
 internal fun getParamsCustomNames(classType: KClass<*>, params: List<KParameter>): Map<KParameter, String> {
     val customNames = mutableMapOf<KParameter, String>()
     for (prop in classType.memberProperties) {
@@ -642,7 +656,6 @@ internal fun getParamsCustomNames(classType: KClass<*>, params: List<KParameter>
     return customNames
 }
 
-@PublishedApi
 internal fun customName(type: KAnnotatedElement) = type.findAnnotation<SqlName>()?.name
-@PublishedApi
+
 internal fun toDbCase(name: String) = if (Sql.useCamelCase) name else Cmd.camel2Snake(name)
