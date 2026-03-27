@@ -70,7 +70,22 @@ inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null): 
     return readOneOrNull(query, con)
 }
 
-/** Executes SELECT with columns specified from primary constructor parameters
+/** Executes SELECT with columns specified from primary constructor parameters and mutable properties
+ * and WHERE clause content from [where] parameter, considering that:
+ * - table is named as class, but in snake case,
+ * - columns are named as primary constructor parameters, but in snake case.
+ * @param where WHERE clause content specified with -"..." or -"""...""" syntax (see [Sql] for details).
+ * After conditions can be specified any clause that goes after WHERE (e.g. ORDER BY or LIMIT).
+ * @param includeOptional true (the default) to include into SELECT clause constructor parameters
+ * that has default values and mutable properties declared in class body,
+ * otherwise are included only primary constructor parameters that does not have default value.
+ * @return [ArrayList] with objects of specified type, created from query results
+ * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
+ * If property doesn't have corresponding column, then annotate it with [SqlIgnore] or set [includeOptional] to false. */
+inline fun <reified T: Any> select(where: Cmd, includeOptional: Boolean = true) =
+    select<T>(where, null, -1, includeOptional)
+
+/** Executes SELECT with columns specified from primary constructor parameters and mutable properties
  * and WHERE clause content from [where] parameter, considering that:
  * - table is named as class, but in snake case,
  * - columns are named as primary constructor parameters, but in snake case.
