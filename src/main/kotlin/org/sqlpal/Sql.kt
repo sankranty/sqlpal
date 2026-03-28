@@ -98,20 +98,22 @@ object Sql: Interpolator<Any, Cmd> {
     fun addTypeMapper(type: KClass<*>, mapper: ValueMapper) = synchronized(valueMappers) { valueMappers[type] = mapper }
 
     /** Defines how [List] or [Array] of [enum] is stored.
-     * If true and database supports arrays of enums (currently only PostgreSQL),
-     * then store as array of enum type defined in database, that has the same name as [enum] class but in snake case.
+     * If true and database supports arrays of enums (currently is supported only by PostgreSQL),
+     * then store as array of enum type defined in database,
+     * that has the same name as [enum] class in accordance with [Sql.convertNamesToSnakeCase] option.
      * Otherwise, store as array of strings. */
     @Volatile
     var useEnumArrays = true
 
-    /** true - use camelCase for names of database objects (tables, columns, user-defined types).
+    /** true (the default) - convert names of classes and properties from camelCase (or PascalCase)
+     * to snake_case to map them to database objects (tables, columns, user-defined types).
      *
-     * false (the default) - use snake_case.
+     * false - assume that names of database objects are the same as names of classes and properties.
      *
      * Value affects only generation of SQL queries, as reading of query results
      * already considers all possible differences in naming. */
     @Volatile
-    var useCamelCase: Boolean = false
+    var convertNamesToSnakeCase: Boolean = true
 
     override fun interpolate(parts: () -> List<String>, params: () -> List<Any>): Cmd {
         val strings = parts()

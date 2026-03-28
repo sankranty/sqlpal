@@ -2,7 +2,6 @@ package org.sqlpal
 
 import java.sql.Connection
 import java.sql.ResultSet
-import java.sql.SQLException
 import kotlin.reflect.*
 import kotlin.reflect.full.findAnnotation
 import kotlin.reflect.full.hasAnnotation
@@ -40,29 +39,29 @@ class SqlPalException(message: String) : Exception(message)
 //------------------------------------------------------------------------------
 
 /** Selects single row with specified id, considering that:
- * - table is named as class but in snake case,
+ * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
  * - property that maps to primary key column is annotated with [Id] and its column datatype is integer or long.
  * If query returns no rows, then [IllegalArgumentException] is thrown.
  * @param id ID to look for.
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @return object of specified type, created from query results
- * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
+ * @return object of specified type, created from query results by mapping
+ * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
  * If property doesn't have corresponding column, then annotate it with [SqlIgnore]. */
 inline fun <reified T: Any> selectById(id: Long, con: Connection? = null) =
     selectByIdOrNll<T>(id, con) ?: throw IllegalArgumentException("Record with ID $id was not found.")
 
 /** Selects single row with specified id, considering that:
- * - table is named as class but in snake case,
+ * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
  * - property that maps to primary key column is annotated with [Id] and its column datatype is integer or long.
  * Null is returned if nothing found.
  * @param id ID to look for.
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @return object of specified type, created from query results
- * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
+ * @return object of specified type, created from query results by mapping
+ * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
  * If property doesn't have corresponding column, then annotate it with [SqlIgnore].*/
 inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null): T? {
     val idCol = colName(Cmd.getIdProperty(T::class))
@@ -72,23 +71,23 @@ inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null): 
 
 /** Executes SELECT with columns specified from primary constructor parameters and mutable properties
  * and WHERE clause content from [where] parameter, considering that:
- * - table is named as class, but in snake case,
- * - columns are named as primary constructor parameters, but in snake case.
+ * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
+ * - columns are named as primary constructor parameters in accordance with [Sql.convertNamesToSnakeCase] option,
  * @param where WHERE clause content specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * After conditions can be specified any clause that goes after WHERE (e.g. ORDER BY or LIMIT).
  * @param includeOptional true (the default) to include into SELECT clause constructor parameters
  * that has default values and mutable properties declared in class body,
  * otherwise are included only primary constructor parameters that does not have default value.
- * @return [ArrayList] with objects of specified type, created from query results
- * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
+ * @return [ArrayList] with objects of specified type, created from query results by mapping
+ * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
  * If property doesn't have corresponding column, then annotate it with [SqlIgnore] or set [includeOptional] to false. */
 inline fun <reified T: Any> select(where: Cmd, includeOptional: Boolean = true) =
     select<T>(where, null, -1, includeOptional)
 
 /** Executes SELECT with columns specified from primary constructor parameters and mutable properties
  * and WHERE clause content from [where] parameter, considering that:
- * - table is named as class, but in snake case,
- * - columns are named as primary constructor parameters, but in snake case.
+ * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
+ * - columns are named as primary constructor parameters in accordance with [Sql.convertNamesToSnakeCase] option,
  * @param where WHERE clause content specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * After conditions can be specified any clause that goes after WHERE (e.g. ORDER BY or LIMIT).
  * @param capacity If specified, sets initial capacity of [ArrayList] where results are stored.
@@ -96,16 +95,16 @@ inline fun <reified T: Any> select(where: Cmd, includeOptional: Boolean = true) 
  * @param includeOptional true (the default) to include into SELECT clause constructor parameters
  * that has default values and mutable properties declared in class body,
  * otherwise are included only primary constructor parameters that does not have default value.
- * @return [ArrayList] with objects of specified type, created from query results
- * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
+ * @return [ArrayList] with objects of specified type, created from query results by mapping
+ * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
  * If property doesn't have corresponding column, then annotate it with [SqlIgnore] or set [includeOptional] to false. */
 inline fun <reified T: Any> select(where: Cmd, capacity: Int = -1, includeOptional: Boolean = true) =
     select<T>(where, null, capacity, includeOptional)
 
 /** Executes SELECT with columns specified from primary constructor parameters and mutable properties
  * with WHERE clause content from [where] parameter, considering that:
- * - table is named as class, but in snake case,
- * - columns are named as primary constructor parameters, but in snake case.
+ * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
+ * - columns are named as primary constructor parameters in accordance with [Sql.convertNamesToSnakeCase] option,
  * @param where WHERE clause content specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * After conditions can be specified any clause that goes after WHERE (e.g. ORDER BY or LIMIT).
  * @param capacity If specified, sets initial capacity of [ArrayList] where results are stored.
@@ -116,8 +115,8 @@ inline fun <reified T: Any> select(where: Cmd, capacity: Int = -1, includeOption
  * @param includeOptional true (the default) to include into SELECT clause constructor parameters
  * that has default values and mutable properties declared in class body,
  * otherwise are included only primary constructor parameters that does not have default value.
- * @return [ArrayList] with objects of specified type, created from query results
- * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
+ * @return [ArrayList] with objects of specified type, created from query results by mapping
+ * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
  * If property doesn't have corresponding column, then annotate it with [SqlIgnore] or set [includeOptional] to false. */
 inline fun <reified T: Any> select(where: Cmd, con: Connection? = null, capacity: Int = -1, includeOptional: Boolean = true): ArrayList<T> {
     // Implementation is moved to separate method, that receives generic type just as parameter
@@ -183,8 +182,8 @@ inline fun <reified T: Any> readValueOrNull(query: Cmd, con: Connection? = null)
 inline fun <reified T: Any> readValues(query: Cmd, con: Connection? = null) =
     query.readValues(T::class, -1, con)
 
-/** Runs specified query and returns object of specified type, created from the first row of query result
- * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
+/** Runs specified query and returns object of specified type, created from the first row of query result by mapping
+ * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
  * If query returns no rows, then [IllegalArgumentException] is thrown.
  * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param con If specified, then command is executed on it, and it is not closed after use.
@@ -193,8 +192,8 @@ inline fun <reified T: Any> readValues(query: Cmd, con: Connection? = null) =
 inline fun <reified T: Any> readOne(query: Cmd, con: Connection? = null) =
     readOneOrNull<T>(query, con) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
 
-/** Runs specified query and returns object of specified type, created from the first row of query result,
- * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
+/** Runs specified query and returns object of specified type, created from the first row of query result by mapping
+ * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
  * Returns null if query returned no rows.
  * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param con If specified, then command is executed on it, and it is not closed after use.
@@ -203,8 +202,8 @@ inline fun <reified T: Any> readOne(query: Cmd, con: Connection? = null) =
 inline fun <reified T: Any> readOneOrNull(query: Cmd, con: Connection? = null) =
     query.read(T::class, 1, con).firstOrNull()
 
-/** Runs specified query and returns [ArrayList] with objects of specified type, created from query results
- * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
+/** Runs specified query and returns [ArrayList] with objects of specified type, created from query results by mapping
+ * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
  * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
@@ -212,8 +211,8 @@ inline fun <reified T: Any> readOneOrNull(query: Cmd, con: Connection? = null) =
 inline fun <reified T: Any> read(query: Cmd, con: Connection? = null) =
     query.read(T::class, -1, con)
 
-/** Runs specified query and returns [ArrayList] with objects of specified type, created from query results
- * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring _ symbol).
+/** Runs specified query and returns [ArrayList] with objects of specified type, created from query results by mapping
+ * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
  * @param query SELECT query specified with -"..." or -"""...""" syntax.
  * @param capacity If specified, sets initial capacity of [ArrayList] where results are stored.
  * It does not limit number of rows fetched from database.
@@ -276,8 +275,8 @@ fun <T> read(query: Cmd, capacity: Int, con: Connection? = null, createItem: (r:
 //------------------------------------------------------------------------------
 
 /** Inserts specified entity to the table, considering that:
- * - table is named as class but in snake case,
- * - columns are named as properties but in snake case.
+ * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
+ * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option.
  * Properties annotated with [AutoGen] are not included into INSERT,
  * but are read from INSERT results if [updateAutoGenValues] is true.
  * @param con If specified, then command is executed on it, and it is not closed after use.
@@ -292,8 +291,8 @@ fun insert(entity: Any, con: Connection? = null, updateAutoGenValues: Boolean = 
 
 /** Inserts multiple items in single batch, considering:
  * - all items are of the same type,
- * - table is named as class but in snake case,
- * - columns are named as properties but in snake case.
+ * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
+ * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option.
  * @param items any iterable source of items to insert.
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
@@ -334,8 +333,8 @@ private fun appendValuesClause(sb: StringBuilder, bindParamsCount: Int) {
 }
 
 /** Updates values in the corresponding table from the specified entity, considering that:
- * - table is named as class but in snake case,
- * - columns are named as properties but in snake case,
+ * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
+ * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option,
  * - if [where] parameter is not specified, then property that maps to primary key column must be annotated with [Id].
  * Properties annotated with [AutoGen] are not included into UPDATE,
  * but are read from UPDATE results if [updateAutoGenValues] is true.
@@ -351,8 +350,8 @@ fun update(entity: Any, where: Cmd? = null, updateAutoGenValues: Boolean = false
     update(entity, null, where, updateAutoGenValues, null)
 
 /** Updates values in the corresponding table from the specified entity, considering that:
- * - table is named as class but in snake case,
- * - columns are named as properties but in snake case,
+ * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
+ * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option,
  * - if [where] parameter is not specified, then property that maps to primary key column must be annotated with [Id].
  * Properties annotated with [AutoGen] are not included into UPDATE,
  * but are read from UPDATE results if [updateAutoGenValues] is true.
@@ -371,8 +370,8 @@ fun update(entity: Any, con: Connection? = null, where: Cmd? = null, updateAutoG
     update(entity, con, where, updateAutoGenValues, null)
 
 /** Updates only specified columns in the corresponding table from the specified entity, considering that:
- * - table is named as class but in snake case,
- * - columns are named as properties but in snake case,
+ * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
+ * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option,
  * - if [where] parameter is not specified, then property that maps to primary key column must be annotated with [Id].
  * Properties annotated with [AutoGen] are not included into UPDATE,
  * but are read from UPDATE results if [updateAutoGenValues] is true.
@@ -398,8 +397,8 @@ fun <T: Any> update(entity: T, where: Cmd? = null, updateAutoGenValues: Boolean 
     update(entity, null, where, updateAutoGenValues, propList)
 
 /** Updates only specified columns in the corresponding table from the specified entity, considering that:
- * - table is named as class but in snake case,
- * - columns are named as properties but in snake case,
+ * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
+ * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option,
  * - if [where] parameter is not specified, then property that maps to primary key column must be annotated with [Id].
  * Properties annotated with [AutoGen] are not included into UPDATE,
  * but are read from UPDATE results if [updateAutoGenValues] is true.
@@ -456,7 +455,7 @@ fun set(vararg items: Pair<KProperty0<*>, Any?>) = PropsToUpdate(
     }, null)
 
 /** Updates specified columns in the corresponding table, considering that:
- * - table is named as [entity] class but in snake case,
+ * - table is named as [entity] class in accordance with [Sql.convertNamesToSnakeCase] option,
  * - property that maps to primary key column is annotated with [Id].
  * This overload is useful when need to update columns for which there are no corresponding properties in the class.
  * @param entity Entity to update.
@@ -481,8 +480,8 @@ fun update(entity: Any, params: List<Pair<String, Any?>>, con: Connection? = nul
 }
 
 /** Deletes row in the corresponding table for the specified entity, considering that:
- * - table is named as class but in snake case,
- * - columns are named as properties but in snake case
+ * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
+ * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option,
  * - property that maps to primary key column is annotated with [Id].
  * @param entity Entity to delete.
  * @param con If specified, then command is executed on it, and it is not closed after use.
@@ -497,8 +496,8 @@ fun delete(entity: Any, con: Connection? = null): Int {
 }
 
 /** Deletes rows that meet [where] conditions, considering that:
- * - table is named as class but in snake case,
- * - columns are named as properties but in snake case.
+ * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
+ * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option.
  * @param where WHERE clause content specified with -"..." or -"""...""" syntax.
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
@@ -673,4 +672,4 @@ internal fun getParamsCustomNames(classType: KClass<*>, params: List<KParameter>
 
 internal fun customName(type: KAnnotatedElement) = type.findAnnotation<SqlName>()?.name
 
-internal fun toDbCase(name: String) = if (Sql.useCamelCase) name else Cmd.camel2Snake(name)
+internal fun toDbCase(name: String) = if (Sql.convertNamesToSnakeCase) Cmd.camel2Snake(name) else name
