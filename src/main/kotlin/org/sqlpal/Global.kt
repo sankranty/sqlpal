@@ -65,7 +65,7 @@ inline fun <reified T: Any> selectById(id: Long, con: Connection? = null) =
  * If property doesn't have corresponding column, then annotate it with [SqlIgnore].*/
 inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null): T? {
     val idCol = colName(Cmd.getIdProperty(T::class))
-    val query = buildSelectQuery(T::class, -"$I$idCol = $id")
+    val query = buildSelectQuery(T::class, Cmd("$idCol = ?", mutableListOf(id)))
     return readOneOrNull(query, con)
 }
 
