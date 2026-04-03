@@ -35,6 +35,8 @@ fun json() {
         edua = arrayOf(Education.high, Education.scienceDegree))
     insert(p)
 
+    update<PersonJ>(-"id >= ${44}", PersonJ::name to "Ekaterina")
+
     val persons = select<PersonJ>(-"edu LIKE '%high%'")
     persons.forEach { println(it) }
 }

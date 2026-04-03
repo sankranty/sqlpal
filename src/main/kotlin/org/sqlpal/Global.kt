@@ -479,6 +479,43 @@ fun update(entity: Any, params: List<Pair<String, Any?>>, con: Connection? = nul
     return exec(Cmd(sb.toString(), bindParams), con)
 }
 
+/** Updates specified columns with specified values in the corresponding table, considering that:
+ * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
+ * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option.
+ * @param where WHERE clause content specified with -"..." or -"""...""" syntax.
+ * After conditions can be specified any clause, that goes after WHERE (e.g. ORDER BY or LIMIT).
+ * If the parameter is specified, then it's appended to UPDATE command,
+ * otherwise table is filtered by value from property annotated with [Id].
+ * @param propsToSet Pairs of property - value to set,
+ * e.g.: Person::position to "Developer", Person::isHired to true.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
+ * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
+ * @return number of updated rows. */
+inline fun <reified T> update(where: Cmd, vararg propsToSet: Pair<KProperty1<*, *>, Any?>, con: Connection? = null) =
+    // Public inline function can't access private members, while it must be inline to get generic type.
+    // So implementation is moved to separate internal method, that receives type just as parameter.
+    execUpdate(T::class, where, propsToSet, con)
+
+@PublishedApi
+internal fun execUpdate(classType: KClass<*>, where: Cmd, propsToSet: Array<out Pair<KProperty1<*, *>, Any?>>, con: Connection?): Int
+{
+    val sb = StringBuilder("UPDATE ${entityName(classType)} SET ")
+    val bindParams = ArrayList<Any?>(propsToSet.size)
+
+    for ((prop, value) in propsToSet) {
+        appendCol(sb, colName(prop), " = ?")
+        addValueToBindParams(value, classType, prop, bindParams)
+    }
+    sb.deleteCharAt(sb.length - 1) // Remove trailing comma
+
+    sb.append(" WHERE ")
+    sb.append(where.sql)
+    bindParams.addAll(where.bindParams)
+
+    return exec(Cmd(sb.toString(), bindParams), con)
+}
+
 /** Deletes row in the corresponding table for the specified entity, considering that:
  * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
  * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option,
@@ -629,25 +666,30 @@ private fun buildWhereWithId(entity: Any, sb: StringBuilder, bindParams:ArrayLis
 
 private fun addPropToBindParams(entity: Any, p: KProperty<*>, bindParams: MutableList<Any?>) {
     @Suppress("UNCHECKED_CAST")
-    var value = when (p) {
+    val value = when (p) {
         is KProperty0<*> -> p.get() // property obtained via myObject::myProp (receiver object is already bound).
         is KProperty1<*, *> -> (p as KProperty1<Any, *>).get(entity) // property from myObject.javaClass.kotlin.memberProperties.
         else -> throw SqlPalException("Property '${p.name}' of '${entity::class.qualifiedName}' class " +
                 "has more than one receiver. Such properties " +
                 "(as an extension property declared in a class) are not supported.")
     }
-    if (value is List<*>) {
+    addValueToBindParams(value, entity::class, p, bindParams)
+}
+
+private fun addValueToBindParams(value: Any?, classType: KClass<*>, p: KProperty<*>, bindParams: MutableList<Any?>) {
+    val paramValue = if (value is List<*>) {
         // Wrap List with object that also contains information about generic type of the List.
         // It's necessary to handle empty Lists, because unlike Array, empty List does not contain
         // information about its generic type, what makes impossible to map it to appropriate SQL type.
         val componentType = p.returnType.arguments[0].type?.classifier as? KClass<*>
             ?: throw SqlPalException("Can't determine generic type of List for " +
-                    "property ${p.name} of ${entity::class.qualifiedName} class to map it to SQL type. " +
+                    "property ${p.name} of ${classType.qualifiedName} class to map it to SQL type. " +
                     "Only Lists of primitive types are supported " +
                     "and generic type must be specified explicitly, not List<*>.")
-        value = ListAndType(value, componentType)
-    }
-    bindParams.add(value)
+        ListAndType(value, componentType)
+    } else
+        value
+    bindParams.add(paramValue)
 }
 
 @PublishedApi
