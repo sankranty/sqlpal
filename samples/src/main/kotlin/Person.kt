@@ -37,6 +37,14 @@ data class Person3 (
     var gen: Gender = Gender.female
 ) : Base()
 
+data class PersonJ (
+    @Id @AutoGen
+    var id: Long? = null,
+    var name: String,
+    var edu: List<Education>,
+    var edua: Array<Education>
+)
+
 data class Person2 (
     @Id @AutoGen
     var id: Long? = null,

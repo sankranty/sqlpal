@@ -22,9 +22,21 @@ suspend fun main(args: Array<String>)
         args.contains("upd") -> upd3()
         args.contains("find") -> find()
         args.contains("sel") -> sel3()
+        args.contains("json") -> json()
         args.contains("gen") -> insert(args.contains("big"))
         else -> select(args.contains("prep"))
     }
+}
+
+fun json() {
+    Sql.storeArraysAs = Sql.ArrayStorageType.JsonExceptByteArray
+
+    val p = PersonJ(name = "Katerina", edu = listOf(Education.high, Education.middle),
+        edua = arrayOf(Education.high, Education.scienceDegree))
+    insert(p)
+
+    val persons = select<PersonJ>(-"edu LIKE '%high%'")
+    persons.forEach { println(it) }
 }
 
 fun ins() {

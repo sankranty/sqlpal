@@ -98,12 +98,28 @@ object Sql: Interpolator<Any, Cmd> {
     fun addTypeMapper(type: KClass<*>, mapper: ValueMapper) = synchronized(valueMappers) { valueMappers[type] = mapper }
 
     /** Defines how [List] or [Array] of [enum] is stored.
+     * Has effect only when [storeArraysAs] is [ArrayStorageType.Array] (the default).
      * If true and database supports arrays of enums (currently is supported only by PostgreSQL),
      * then store as array of enum type defined in database,
      * that has the same name as [enum] class in accordance with [Sql.convertNamesToSnakeCase] option.
      * Otherwise, store as array of strings. */
     @Volatile
     var useEnumArrays = true
+
+    /** Defines how [List] or [Array] is stored. */
+    @Volatile
+    var storeArraysAs = ArrayStorageType.Array
+
+    /** Supported options of how arrays can be stored in database. */
+    enum class ArrayStorageType {
+        /** Store as database array (database must support columns of array type). */
+        Array,
+        /** Store as JSON string. In this case [useEnumArrays] has no effect. */
+        Json,
+        /** Store as JSON string except ByteArray. Option is useful when ByteArray is used for BLOB columns.
+         * In this case [useEnumArrays] has no effect. */
+        JsonExceptByteArray
+    }
 
     /** true (the default) - convert names of classes and properties from camelCase (or PascalCase)
      * to snake_case to map them to database objects (tables, columns, user-defined types).

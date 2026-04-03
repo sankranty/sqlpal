@@ -217,11 +217,8 @@ class Cmd @PublishedApi internal constructor(
 
     private fun createReader(type: KType, colIndex: Int, param: KParameter?, className: String?): Reader
     {
-        val kClassType = (type.classifier as? KClass<*>)
-        val classType = kClassType?.java
-
-        val isList = kClassType?.isSubclassOf(List::class) == true
-        val isArray = classType?.isArray == true // arrays does not have base type (e.g. IntArray, ByteArray, etc.), so use isArray prop.
+        val isList = type.kClass?.isSubclassOf(List::class) == true
+        val isArray = type.kClass?.java?.isArray == true // arrays don't have base type (there are IntArray, ByteArray, etc.), so use isArray prop.
 
         // For List and Array, we need type of its generic.
         val valueType = if (isList || isArray) type.arguments[0].type!! else type
@@ -229,12 +226,14 @@ class Cmd @PublishedApi internal constructor(
         val customReader = getCustomReader(type)
 
         val reader = if (customReader != null) { i, _ -> customReader(this, i) }
-        else if (classType?.isEnum == true) { i, t -> getString(i)?.toEnum(t) }
+        else if (type.isEnum) { i, t -> getString(i)?.toEnum(t) }
         else if (isList)
-            if ((valueType.classifier as? KClass<*>)?.java?.isEnum == true) ResultSet::readEnumList
+            if (isStoredAsJson(type.kClass)) ResultSet::readJsonToList
+            else if (valueType.isEnum) ResultSet::readEnumList
             else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toList()
         else if (isArray)
-            if (classType?.componentType?.isEnum == true) ResultSet::readEnumArray
+            if (isStoredAsJson(type.kClass)) { i, t -> readJsonToList(i, t)?.toArrayOfType(valueType) }
+            else if (type.kClass?.java?.componentType?.isEnum == true) ResultSet::readEnumArray
             else if (type.classifier == ByteArray::class) fun ResultSet.(i, _) = getBytes(i)
             else fun ResultSet.(i, _) = getArray(i)?.array
         else when (type.classifier) {
@@ -284,6 +283,9 @@ class Cmd @PublishedApi internal constructor(
             { i, _ -> valueOrNull { getValue(i) } }
         else
             { i, _ -> getValue(i) }
+
+    private fun isStoredAsJson(classType: KClass<*>?) = Sql.storeArraysAs == Sql.ArrayStorageType.Json ||
+            Sql.storeArraysAs == Sql.ArrayStorageType.JsonExceptByteArray && classType != ByteArray::class
 
     /** Calls [fillItemParams] for each item in [items] and to set bind parameters and executes query as batch.
      * @param con If specified, then command is executed on it, and it is not closed after use.
@@ -350,48 +352,195 @@ class Cmd @PublishedApi internal constructor(
 
             when (value) {
                 is Enum<*> -> statement.setObject(index, value, Types.OTHER)
-                is List<*> -> {
-                    if (componentType == null) throw IllegalArgumentException(
-                        "List is not wrapped with ListAndType object, what indicates a bug or incorrect use of SqlPal.")
-
-                    if (componentType.java.isEnum)
-                        setEnumArray({ value[it] }, value.size, componentType, index, statement)
-                    else {
-                        // JDBC supports arrays but not lists, so convert List to Array.
-                        // Array must be of certain type, not array of Any, otherwise driver would not be able to figure out
-                        // to what SQL type map it to. So create it via reflection to explicitly specify type.
-                        @Suppress("UNCHECKED_CAST")
-                        val array = java.lang.reflect.Array.newInstance(componentType.javaObjectType, value.size) as Array<Any?>
-                        for (i in value.indices)
-                            array[i] = value[i]
-                        statement.setObject(index, array, Types.ARRAY)
-                    }
-                }
-                is Array<*> ->
-                    if (componentType!!.java.isEnum)
-                        setEnumArray({ value[it] }, value.size, componentType, index, statement)
-                    else
-                        statement.setObject(index, value, Types.ARRAY)
                 is ZonedDateTime -> statement.setObject(index, value.toOffsetDateTime())
                 is Instant -> statement.setObject(index, value.atOffset(ZoneOffset.UTC))
                 is Currency -> statement.setString(index, value.toString())
-                else -> statement.setObject(index, value) // Other primitive types are directly supported by JDBC.
+                else -> if (value is List<*> || value::class.java.isArray) // Arrays don't have base type, so use isArray.
+                    setArray(statement, index, value, componentType)
+                else
+                    statement.setObject(index, value) // Other primitive types are directly supported by JDBC.
             }
         }
     }
 
-    private inline fun setEnumArray(getValue: (Int) -> Any?, itemCount: Int, componentType: KClass<*>,
-                                    colIndex: Int, statement: PreparedStatement) {
+    // Represents values necessary to uniformly process any kind of iterable source
+    // regardless of its type (List, Array<*>, ByteArray, etc.).
+    private class Items(val iterator: Iterator<*>, val size: Int, val isTypedArray: Boolean = true)
+
+    private fun setArray(statement: PreparedStatement, index: Int, value: Any, componentType: KClass<out Any>?) {
+        componentType ?: throw IllegalArgumentException("Query has parameter of type List<*> that is not wrapped " +
+                "with ListAndType object, what indicates a bug or incorrect use of SqlPal.")
+
+        val items = getItems(value)
+        if (Sql.storeArraysAs == Sql.ArrayStorageType.Json ||
+            (Sql.storeArraysAs == Sql.ArrayStorageType.JsonExceptByteArray && value !is ByteArray))
+        {
+            if (componentType == Any::class) throw SqlPalException("Parameter $index is List/Array of Any. " +
+                    "It can't be serialized to JSON. Only lists/arrays of certain type are supported.")
+
+            val json = JsonArrayMapper.serialize(items.isTypedArray, items.iterator, componentType)
+            statement.setString(index, json)
+        }
+        else if (componentType.java.isEnum)
+            setEnumArray(statement, index, items, componentType)
+        else {
+            // JDBC supports arrays but not lists, so if it's List, then convert it to Array.
+            // Array must be of certain type, not array of Any, otherwise database driver would not be able
+            // to figure out to what SQL type map it to. So create it via reflection to explicitly specify type.
+            val array = if (value is List<*>) value.toArrayOfType(componentType) else value
+            statement.setObject(index, array, Types.ARRAY)
+        }
+    }
+
+    private fun getItems(value: Any) =
+        // There is no base class for arrays, but all arrays and lists have iterator, so get it to iterate over array.
+        when (value) {
+            is List<*> -> Items(value.iterator(), value.size, false)
+            is Array<*> -> Items(value.iterator(), value.size, false)
+            is ByteArray -> Items(value.iterator(), value.size)
+            is ShortArray -> Items(value.iterator(), value.size)
+            is IntArray -> Items(value.iterator(), value.size)
+            is LongArray -> Items(value.iterator(), value.size)
+            is FloatArray -> Items(value.iterator(), value.size)
+            is DoubleArray -> Items(value.iterator(), value.size)
+            is BooleanArray -> Items(value.iterator(), value.size)
+            else -> Items((value as CharArray).iterator(), value.size)
+        }
+
+    private fun setEnumArray(statement: PreparedStatement, index: Int, items: Items, componentType: KClass<*>) {
         // Convert enum values to strings.
-        val array = Array(itemCount) { (getValue(it) as Enum<*>).name }
+        val array = Array(items.size) { (items.iterator.next() as Enum<*>).name }
 
         val con = statement.connection
         if (Sql.useEnumArrays && con.metaData.databaseProductName.lowercase() == "postgresql") {
             val sqlArray = con.createArrayOf(entityName(componentType), array)
-            statement.setArray(colIndex, sqlArray)
+            statement.setArray(index, sqlArray)
         } else
-            statement.setObject(colIndex, array, Types.ARRAY)
+            statement.setObject(index, array, Types.ARRAY)
     }
+}
+
+private fun ResultSet.readJsonToList(colIndex: Int, componentType: KType): List<*>? {
+    val json = getString(colIndex) ?: return null
+    return JsonArrayMapper(json, colIndex, componentType).parse()
+}
+
+private class JsonArrayMapper(val json: String, val colIndex: Int, val componentType: KType)
+{
+    companion object {
+        fun serialize(isTypedArray: Boolean, iterator: Iterator<*>, componentType: KClass<*>): String {
+            val sb = StringBuilder("[")
+
+            if (isTypedArray)
+                // Typed array (e.g. ByteArray, IntArray) can't contain nulls, so don't check for null to speed up.
+                iterator.forEach { sb.append(it).append(',') }
+            else if (componentType.isQuotedInJson)
+                iterator.forEach {
+                    if (it == null) sb.append("null")
+                    else sb.append("\"").append(it).append("\"")
+                    sb.append(',')
+                }
+            else
+                iterator.forEach { sb.append(it ?: "null").append(',') }
+
+            sb.deleteCharAt(sb.length - 1) // Remove trailing comma
+            sb.append(']')
+            return sb.toString()
+        }
+    }
+
+    private var index: Int = 0
+
+    fun parse(): List<*> {
+        val list = mutableListOf<Any?>()
+
+        skipWhitespace()
+        if (json[index++] != '[') throwJsonParseError(colIndex, index - 1)
+        skipWhitespace()
+        if (json[index] == ']') return list
+
+        val extractItem = if (componentType.isQuotedInJson) ::extractQuotedItem else ::extractUnquotedItem
+        val parse = getParser()
+
+        while (true) {
+            val value = if (parseNull()) null else parse(extractItem())
+            list.add(value)
+            skipWhitespace()
+            if (json[index] == ']') break
+            if (json[index++] != ',') throwJsonParseError(colIndex, index - 1)
+            skipWhitespace()
+        }
+        return list
+    }
+
+    private fun getParser(): (String) -> Any = when (componentType) {
+        String::class -> { c -> c }
+
+        Integer::class -> Integer::parseInt
+        Long::class -> java.lang.Long::parseLong
+        Byte::class -> java.lang.Byte::parseByte
+        Short::class -> java.lang.Short::parseShort
+
+        Float::class -> java.lang.Float::parseFloat
+        Double::class -> java.lang.Double::parseDouble
+
+        Boolean::class -> java.lang.Boolean::parseBoolean
+        BigDecimal::class -> { c -> c.toBigDecimal() }
+
+        LocalDate::class -> LocalDate::parse
+        LocalTime::class -> LocalTime::parse
+        LocalDateTime::class -> LocalDateTime::parse
+        OffsetTime::class -> OffsetTime::parse
+        OffsetDateTime::class -> OffsetDateTime::parse
+        ZonedDateTime::class -> ZonedDateTime::parse
+        Instant::class -> Instant::parse
+        else -> if (componentType.isEnum) { c -> c.toEnum(componentType) }
+        else throw SqlPalException("Parsing from JSON for type $componentType is not implemented.")
+    }
+
+    private fun parseNull() = if (json.length > index + 3 &&
+        json[index] == 'n' && json[index + 1] == 'u' && json[index + 2] == 'l' && json[index + 3] == 'l')
+    {
+        index += 4; true
+    } else
+        false
+
+    private fun extractQuotedItem(): String {
+        if (json[index] != '"') throwJsonParseError(colIndex, index)
+
+        val startIndex = index + 1 // Move after opening quote.
+        do {
+            index++
+            index = json.indexOf('"', index)
+            if (index < 0) throwJsonParseError(colIndex, startIndex)
+        } while (json[index - 1] == '\\') // If it's escaped quote, the search further.
+
+        index++ // Move index to next char after closing quote.
+        return json.substring(startIndex, index - 1)
+    }
+
+    private fun extractUnquotedItem(): String {
+        val startIndex = index
+
+        index = json.indexOf(',', index)
+        if (index < 0) throwJsonParseError(colIndex, startIndex)
+        while (json[--index].isWhitespace()) Unit
+
+        index++ // Move index to next char after item.
+        return json.substring(startIndex, index)
+    }
+
+    private fun skipWhitespace() {
+        while (true) {
+            if (index >= json.length) throwJsonParseError(colIndex, index)
+            if (!json[index].isWhitespace()) return
+            index++
+        }
+    }
+
+    private fun throwJsonParseError(colIndex: Int, position: Int): Nothing = throw SqlPalException(
+        "Incorrect format at position $position of JSON array in column at index $colIndex. " +
+                "Unable to convert JSON string to List or Array.")
 }
 
 @Suppress("UNCHECKED_CAST")
@@ -403,10 +552,8 @@ private fun ResultSet.readEnumArray(colIndex: Int, enumType: KType): Array<Enum<
     // Enum array must be typed by certain enum, not Enum<*>,
     // otherwise type mismatch will occur on assigning it to appropriate property.
     // So create it via reflection to explicitly specify type.
-    val enumClass = (enumType.classifier as? KClass<*>)?.javaObjectType
-    val enumArray = java.lang.reflect.Array.newInstance(enumClass, arr.size) as Array<Enum<*>>
-    for (i in arr.indices)
-        enumArray[i] = arr[i].toEnum(enumType)
+    val enumArray = java.lang.reflect.Array.newInstance(enumType.javaClass, arr.size) as Array<Enum<*>>
+    for (i in arr.indices) enumArray[i] = arr[i].toEnum(enumType)
     return enumArray
 }
 
@@ -421,4 +568,27 @@ private fun ResultSet.readEnumList(colIndex: Int, enumType: KType): List<Enum<*>
 @Suppress("UNCHECKED_CAST")
 private fun String.toEnum(enumType: KType) =
     java.lang.Enum.valueOf(enumType.jvmErasure.java as Class<out Enum<*>>, this)
+
+private fun List<*>.toArrayOfType(componentType: KType) = componentType.kClass?.let { toArrayOfType(it) }
+@Suppress("UNCHECKED_CAST")
+private fun List<*>.toArrayOfType(componentType: KClass<*>): Array<Any?> {
+    // Using reflection to create array of specified type,
+    // as using List.toTypedArray will produce Array<Any> due to generic type erasure.
+    val array = (java.lang.reflect.Array.newInstance(componentType.java, size) as Array<Any?>)
+    for (i in indices) array[i] = this[i]
+    return array
+}
+
+private val KType.isEnum get() = kClass?.java?.isEnum == true
+
+private val KType.isQuotedInJson get() = kClass?.isQuotedInJson == true
+private val KClass<*>.isQuotedInJson get() = when (this) {
+    String::class,
+    LocalDate::class, LocalTime::class, LocalDateTime::class,
+    OffsetTime::class, OffsetDateTime::class, ZonedDateTime::class,
+    Instant::class -> true
+    else -> java.isEnum
+}
+
+private val KType.kClass get() = classifier as? KClass<*>
 
