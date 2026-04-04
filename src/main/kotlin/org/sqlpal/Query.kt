@@ -7,78 +7,16 @@ import java.util.*
 import kotlin.collections.ArrayList
 import kotlin.reflect.*
 import kotlin.reflect.full.*
-import kotlin.reflect.jvm.jvmErasure
 
 /** Encapsulates SQL-query with bind parameters and provides methods to execute it.
- * If connection is specified, then command is executed on it, otherwise connection is obtained from pool.
  *
  * Instances of this class are created by -"..." or -"""...""" syntax.
- * It is not recommended to work with it directly, just pass it to methods that accept it. */
-class Cmd @PublishedApi internal constructor(
+ * Except rare cases, there is no need to work with this class directly,
+ * general workflow is to just pass it to methods, that accept it. */
+class Query @PublishedApi internal constructor(
     val sql: String,
     val bindParams: MutableList<Any?>,
 ) {
-    @PublishedApi
-    internal companion object
-    {
-        fun <T: Any> getConstructor(type: KClass<T>): KFunction<T> {
-            val error = "Class must have primary constructor where are declared all properties that should be read from database."
-            val constr = type.primaryConstructor ?: throw SqlPalException(error)
-            if (constr.parameters.isEmpty()) throw SqlPalException(error)
-            return constr
-        }
-
-        fun <T: Any> getIdProperty(type: KClass<T>) = type.memberProperties.find { it.hasAnnotation<Id>() }
-            ?: throw SqlPalException("Unable to generate WHERE clause for statement on ${type.simpleName} as it does not have field annotated with @Id")
-
-        /** Converts String from camelCase to snake_case. */
-        fun camel2Snake(name: String): String {
-            val sb = StringBuilder()
-            for (i in name.indices) {
-                if (i > 0 && name[i].isUpperCase())
-                    sb.append('_')
-                sb.append(name[i].lowercaseChar())
-            }
-            return sb.toString()
-        }
-
-        /** Converts String from snake_case to camelCase.*/
-        fun snake2Camel(name: String): String {
-            var i = 0
-            val sb = StringBuilder()
-            while (i < name.length) {
-                if (name[i] != '_') sb.append(name[i])
-                else if (i++ < name.length) sb.append(name[i].uppercase())
-                i++
-            }
-            return sb.toString()
-        }
-
-        /** Does next:
-         * - removes quotes (if quoted),
-         * - removes chars that can be used as delimiters in names in database,
-         * - converts to lowercase. */
-        fun String.toPlainName(): String {
-            if (isEmpty()) return this
-
-            val sb = StringBuilder()
-            val f = this[0]
-            val l = this[length - 1]
-            val isQuoted = (f == '"' && l == '"') || (f == '[' && l == ']') || (f == '`' && l == '`')
-
-            var i = if (isQuoted) 1 else 0
-            val len = length - i
-            while (i < len) {
-                when (this[i]) {
-                    '_', '-', '.', ' ' -> {}
-                    else -> sb.append(this[i].lowercaseChar())
-                }
-                i++
-            }
-            return sb.toString()
-        }
-    }
-
     private data class Reader(
         val read: ResultSet.(Int, KType) -> Any?,
         val colIndex: Int,
@@ -131,13 +69,13 @@ class Cmd @PublishedApi internal constructor(
                 values[i] = rs.read(colIndex, type)
             }
             val obj = createObject()
+            results.add(obj)
             if (propReaders != null)
                 for ((prop, reader) in propReaders) {
                     val (read, colIndex, type) = reader
                     val value = rs.read(colIndex, type)
                     prop.set(obj, value)
                 }
-            results.add(obj)
         }
         results
     }
@@ -195,7 +133,7 @@ class Cmd @PublishedApi internal constructor(
         results
     }
 
-    internal fun readResults(entity: Any, con: Connection?, autoGenColumns: RefreshMap): Int {
+    internal fun execAndReadResults(entity: Any, con: Connection?, autoGenColumns: RefreshMap): Int {
         val autoGenArr = if (autoGenColumns.isNotEmpty()) autoGenColumns.keys.toTypedArray() else null
 
         return doAction(con, autoGenArr) { cmd ->
@@ -228,11 +166,11 @@ class Cmd @PublishedApi internal constructor(
         val reader = if (customReader != null) { i, _ -> customReader(this, i) }
         else if (type.isEnum) { i, t -> getString(i)?.toEnum(t) }
         else if (isList)
-            if (isStoredAsJson(type.kClass)) ResultSet::readJsonToList
+            if (SqlPal.storeAsJson(type.kClass == ByteArray::class)) ResultSet::readJsonToList
             else if (valueType.isEnum) ResultSet::readEnumList
             else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toList()
         else if (isArray)
-            if (isStoredAsJson(type.kClass)) { i, t -> readJsonToList(i, t)?.toArrayOfType(valueType) }
+            if (SqlPal.storeAsJson(type.kClass == ByteArray::class)) { i, t -> readJsonToList(i, t)?.toArrayOfType(valueType) }
             else if (type.kClass?.java?.componentType?.isEnum == true) ResultSet::readEnumArray
             else if (type.classifier == ByteArray::class) fun ResultSet.(i, _) = getBytes(i)
             else fun ResultSet.(i, _) = getArray(i)?.array
@@ -274,7 +212,7 @@ class Cmd @PublishedApi internal constructor(
     private fun getCustomReader(type: KType): KFunction2<ResultSet, Int, Any?>? {
         var mapper = type.findAnnotation<Mapper>()?.mapper?.run { objectInstance ?: createInstance() }
         if (mapper == null)
-            mapper = Sql.valueMappers[type.classifier]
+            mapper = SqlPal.valueMappers[type.classifier]
         return if (mapper != null) mapper::readValue else null
     }
 
@@ -283,9 +221,6 @@ class Cmd @PublishedApi internal constructor(
             { i, _ -> valueOrNull { getValue(i) } }
         else
             { i, _ -> getValue(i) }
-
-    private fun isStoredAsJson(classType: KClass<*>?) = Sql.storeArraysAs == Sql.ArrayStorageType.Json ||
-            Sql.storeArraysAs == Sql.ArrayStorageType.JsonExceptByteArray && classType != ByteArray::class
 
     /** Calls [fillItemParams] for each item in [items] and to set bind parameters and executes query as batch.
      * @param con If specified, then command is executed on it, and it is not closed after use.
@@ -324,12 +259,12 @@ class Cmd @PublishedApi internal constructor(
         if (con != null)
             doActionOnConnection(con, autoGenColumns, isBatch, action)
         else
-            Sql.withConnection { doActionOnConnection(it, autoGenColumns, isBatch, action) }
+            SqlPal.withConnection { doActionOnConnection(it, autoGenColumns, isBatch, action) }
 
     private inline fun <T> doActionOnConnection(con: Connection, autoGenColumns: Array<String>?,
                                                 isBatch: Boolean, action: (PreparedStatement) -> T) =
         con.prepareStatement(sql, autoGenColumns).use {
-            // For batch params will be set inside action.
+            // For batch, params will be set inside action.
             if (!isBatch) setBindParams(it)
             action(it)
         }
@@ -347,7 +282,7 @@ class Cmd @PublishedApi internal constructor(
             else
                 paramValue to paramValue::class.java.componentType?.kotlin
 
-            if (Sql.valueMappers[value::class]?.writeValue(value, statement, index, componentType) == true)
+            if (SqlPal.valueMappers[value::class]?.writeValue(value, statement, index, componentType) == true)
                 return
 
             when (value) {
@@ -372,13 +307,12 @@ class Cmd @PublishedApi internal constructor(
                 "with ListAndType object, what indicates a bug or incorrect use of SqlPal.")
 
         val items = getItems(value)
-        if (Sql.storeArraysAs == Sql.ArrayStorageType.Json ||
-            (Sql.storeArraysAs == Sql.ArrayStorageType.JsonExceptByteArray && value !is ByteArray))
-        {
+
+        if (SqlPal.storeAsJson(value is ByteArray)) {
             if (componentType == Any::class) throw SqlPalException("Parameter $index is List/Array of Any. " +
                     "It can't be serialized to JSON. Only lists/arrays of certain type are supported.")
 
-            val json = JsonArrayMapper.serialize(items.isTypedArray, items.iterator, componentType)
+            val json = JsonMapper.serialize(items.isTypedArray, items.iterator, componentType)
             statement.setString(index, json)
         }
         else if (componentType.java.isEnum)
@@ -412,7 +346,7 @@ class Cmd @PublishedApi internal constructor(
         val array = Array(items.size) { (items.iterator.next() as Enum<*>).name }
 
         val con = statement.connection
-        if (Sql.useEnumArrays && con.metaData.databaseProductName.lowercase() == "postgresql") {
+        if (SqlPal.useEnumArrays && con.metaData.databaseProductName.lowercase() == "postgresql") {
             val sqlArray = con.createArrayOf(entityName(componentType), array)
             statement.setArray(index, sqlArray)
         } else
@@ -422,125 +356,7 @@ class Cmd @PublishedApi internal constructor(
 
 private fun ResultSet.readJsonToList(colIndex: Int, componentType: KType): List<*>? {
     val json = getString(colIndex) ?: return null
-    return JsonArrayMapper(json, colIndex, componentType).parse()
-}
-
-private class JsonArrayMapper(val json: String, val colIndex: Int, val componentType: KType)
-{
-    companion object {
-        fun serialize(isTypedArray: Boolean, iterator: Iterator<*>, componentType: KClass<*>): String {
-            val sb = StringBuilder("[")
-
-            if (isTypedArray)
-                // Typed array (e.g. ByteArray, IntArray) can't contain nulls, so don't check for null to speed up.
-                iterator.forEach { sb.append(it).append(',') }
-            else if (componentType.isQuotedInJson)
-                iterator.forEach {
-                    if (it == null) sb.append("null")
-                    else sb.append("\"").append(it).append("\"")
-                    sb.append(',')
-                }
-            else
-                iterator.forEach { sb.append(it ?: "null").append(',') }
-
-            sb.deleteCharAt(sb.length - 1) // Remove trailing comma
-            sb.append(']')
-            return sb.toString()
-        }
-    }
-
-    private var index: Int = 0
-
-    fun parse(): List<*> {
-        val list = mutableListOf<Any?>()
-
-        skipWhitespace()
-        if (json[index++] != '[') throwJsonParseError(colIndex, index - 1)
-        skipWhitespace()
-        if (json[index] == ']') return list
-
-        val extractItem = if (componentType.isQuotedInJson) ::extractQuotedItem else ::extractUnquotedItem
-        val parse = getParser()
-
-        while (true) {
-            val value = if (parseNull()) null else parse(extractItem())
-            list.add(value)
-            skipWhitespace()
-            if (json[index] == ']') break
-            if (json[index++] != ',') throwJsonParseError(colIndex, index - 1)
-            skipWhitespace()
-        }
-        return list
-    }
-
-    private fun getParser(): (String) -> Any = when (componentType) {
-        String::class -> { c -> c }
-
-        Integer::class -> Integer::parseInt
-        Long::class -> java.lang.Long::parseLong
-        Byte::class -> java.lang.Byte::parseByte
-        Short::class -> java.lang.Short::parseShort
-
-        Float::class -> java.lang.Float::parseFloat
-        Double::class -> java.lang.Double::parseDouble
-
-        Boolean::class -> java.lang.Boolean::parseBoolean
-        BigDecimal::class -> { c -> c.toBigDecimal() }
-
-        LocalDate::class -> LocalDate::parse
-        LocalTime::class -> LocalTime::parse
-        LocalDateTime::class -> LocalDateTime::parse
-        OffsetTime::class -> OffsetTime::parse
-        OffsetDateTime::class -> OffsetDateTime::parse
-        ZonedDateTime::class -> ZonedDateTime::parse
-        Instant::class -> Instant::parse
-        else -> if (componentType.isEnum) { c -> c.toEnum(componentType) }
-        else throw SqlPalException("Parsing from JSON for type $componentType is not implemented.")
-    }
-
-    private fun parseNull() = if (json.length > index + 3 &&
-        json[index] == 'n' && json[index + 1] == 'u' && json[index + 2] == 'l' && json[index + 3] == 'l')
-    {
-        index += 4; true
-    } else
-        false
-
-    private fun extractQuotedItem(): String {
-        if (json[index] != '"') throwJsonParseError(colIndex, index)
-
-        val startIndex = index + 1 // Move after opening quote.
-        do {
-            index++
-            index = json.indexOf('"', index)
-            if (index < 0) throwJsonParseError(colIndex, startIndex)
-        } while (json[index - 1] == '\\') // If it's escaped quote, the search further.
-
-        index++ // Move index to next char after closing quote.
-        return json.substring(startIndex, index - 1)
-    }
-
-    private fun extractUnquotedItem(): String {
-        val startIndex = index
-
-        index = json.indexOf(',', index)
-        if (index < 0) throwJsonParseError(colIndex, startIndex)
-        while (json[--index].isWhitespace()) Unit
-
-        index++ // Move index to next char after item.
-        return json.substring(startIndex, index)
-    }
-
-    private fun skipWhitespace() {
-        while (true) {
-            if (index >= json.length) throwJsonParseError(colIndex, index)
-            if (!json[index].isWhitespace()) return
-            index++
-        }
-    }
-
-    private fun throwJsonParseError(colIndex: Int, position: Int): Nothing = throw SqlPalException(
-        "Incorrect format at position $position of JSON array in column at index $colIndex. " +
-                "Unable to convert JSON string to List or Array.")
+    return JsonMapper(json, colIndex, componentType).parse()
 }
 
 @Suppress("UNCHECKED_CAST")
@@ -565,10 +381,6 @@ private fun ResultSet.readEnumList(colIndex: Int, enumType: KType): List<Enum<*>
     return arr.map { it.toEnum(enumType) }
 }
 
-@Suppress("UNCHECKED_CAST")
-private fun String.toEnum(enumType: KType) =
-    java.lang.Enum.valueOf(enumType.jvmErasure.java as Class<out Enum<*>>, this)
-
 private fun List<*>.toArrayOfType(componentType: KType) = componentType.kClass?.let { toArrayOfType(it) }
 @Suppress("UNCHECKED_CAST")
 private fun List<*>.toArrayOfType(componentType: KClass<*>): Array<Any?> {
@@ -579,16 +391,28 @@ private fun List<*>.toArrayOfType(componentType: KClass<*>): Array<Any?> {
     return array
 }
 
-private val KType.isEnum get() = kClass?.java?.isEnum == true
+/** Does next:
+ * - removes quotes (if quoted),
+ * - removes chars that can be used as delimiters in names in database,
+ * - converts to lowercase. */
+private fun String.toPlainName(): String {
+    if (isEmpty()) return this
 
-private val KType.isQuotedInJson get() = kClass?.isQuotedInJson == true
-private val KClass<*>.isQuotedInJson get() = when (this) {
-    String::class,
-    LocalDate::class, LocalTime::class, LocalDateTime::class,
-    OffsetTime::class, OffsetDateTime::class, ZonedDateTime::class,
-    Instant::class -> true
-    else -> java.isEnum
+    val sb = StringBuilder()
+    val f = this[0]
+    val l = this[length - 1]
+    val isQuoted = (f == '"' && l == '"') || (f == '[' && l == ']') || (f == '`' && l == '`')
+
+    var i = if (isQuoted) 1 else 0
+    val len = length - i
+    while (i < len) {
+        when (this[i]) {
+            '_', '-', '.', ' ' -> {}
+            else -> sb.append(this[i].lowercaseChar())
+        }
+        i++
+    }
+    return sb.toString()
 }
 
-private val KType.kClass get() = classifier as? KClass<*>
 

@@ -10,11 +10,12 @@ import java.time.LocalTime
 import kotlin.math.ceil
 import kotlin.math.cos
 import org.sqlpal.*
+import org.sqlpal.query.*
 
 suspend fun main(args: Array<String>)
 {
     val base = if (args.contains("big")) "test_big" else "test"
-    Sql.setDataSource("jdbc:postgresql://localhost:5431/$base", base, base)
+    SqlPal.setDataSource("jdbc:postgresql://localhost:5431/$base", base, base)
 
     when {
         args.contains("ins") -> ins3()
@@ -29,7 +30,7 @@ suspend fun main(args: Array<String>)
 }
 
 fun json() {
-    Sql.storeArraysAs = Sql.ArrayStorageType.JsonExceptByteArray
+    SqlPal.storeArraysAs = ArrayStorageType.JsonExceptByteArray
 
     val p = PersonJ(name = "Katerina", edu = listOf(Education.high, Education.middle),
         edua = arrayOf(Education.high, Education.scienceDegree))
@@ -382,7 +383,7 @@ fun insert(big: Boolean) {
     val thousandsOfRows = if (big) 1000 else 100
     for (i in 0..thousandsOfRows)
          generate1KInsert(i, batch)
-    Sql.withConnection { it.prepareStatement(batch.toString()).execute() }
+    SqlPal.withConnection { it.prepareStatement(batch.toString()).execute() }
 }
 
 fun generate1KInsert(iteration: Int, builder: StringBuilder) {

@@ -1,602 +1,25 @@
 package org.sqlpal
 
+import org.sqlpal.query.PropsToUpdate
 import java.sql.Connection
-import java.sql.ResultSet
 import kotlin.reflect.*
 import kotlin.reflect.full.findAnnotation
 import kotlin.reflect.full.hasAnnotation
 import kotlin.reflect.full.memberProperties
+import kotlin.reflect.full.primaryConstructor
+import kotlin.reflect.jvm.jvmErasure
 
 //////////////////////////////////////////////////////////////////////////////////
-//--------------------- Contains public methods of SqlPal ----------------------//
+//--------------------- Contains internal utility methods ----------------------//
 //////////////////////////////////////////////////////////////////////////////////
-
-/** Runs specified block, providing connection, that is committed after block is executed or rolled back on exception.
- * @param block to execute within transaction. */
-inline fun <T> transaction(block: (Connection) -> T) = Sql.withConnection { transaction(it, block) }
-
-/** Runs specified block and commit provided connection after block is executed or roll it back on exception.
- * @param connection that is committed or rolled back after execution.
- * @param block to execute within transaction. */
-inline fun <T> transaction(connection: Connection, block: (Connection) -> T): T {
-    try {
-        connection.autoCommit = false
-        val result = block(connection)
-        connection.commit()
-        return result
-    }
-    catch (ex: Exception) {
-        connection.rollback()
-        throw ex
-    }
-}
-
-/** Exception that signals incorrect usage of SqlPal or its limitations. */
-class SqlPalException(message: String) : Exception(message)
-
-//------------------------------------------------------------------------------
-//------------------------------- SELECT methods -------------------------------
-//------------------------------------------------------------------------------
-
-/** Selects single row with specified id, considering that:
- * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
- * - property that maps to primary key column is annotated with [Id] and its column datatype is integer or long.
- * If query returns no rows, then [IllegalArgumentException] is thrown.
- * @param id ID to look for.
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @return object of specified type, created from query results by mapping
- * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
- * If property doesn't have corresponding column, then annotate it with [SqlIgnore]. */
-inline fun <reified T: Any> selectById(id: Long, con: Connection? = null) =
-    selectByIdOrNll<T>(id, con) ?: throw IllegalArgumentException("Record with ID $id was not found.")
-
-/** Selects single row with specified id, considering that:
- * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
- * - property that maps to primary key column is annotated with [Id] and its column datatype is integer or long.
- * Null is returned if nothing found.
- * @param id ID to look for.
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @return object of specified type, created from query results by mapping
- * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
- * If property doesn't have corresponding column, then annotate it with [SqlIgnore].*/
-inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null): T? {
-    val idCol = colName(Cmd.getIdProperty(T::class))
-    val query = buildSelectQuery(T::class, Cmd("$idCol = ?", mutableListOf(id)))
-    return readOneOrNull(query, con)
-}
-
-/** Executes SELECT with columns specified from primary constructor parameters and mutable properties
- * and WHERE clause content from [where] parameter, considering that:
- * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
- * - columns are named as primary constructor parameters in accordance with [Sql.convertNamesToSnakeCase] option,
- * @param where WHERE clause content specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * After conditions can be specified any clause that goes after WHERE (e.g. ORDER BY or LIMIT).
- * @param includeOptional true (the default) to include into SELECT clause constructor parameters
- * that has default values and mutable properties declared in class body,
- * otherwise are included only primary constructor parameters that does not have default value.
- * @return [ArrayList] with objects of specified type, created from query results by mapping
- * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
- * If property doesn't have corresponding column, then annotate it with [SqlIgnore] or set [includeOptional] to false. */
-inline fun <reified T: Any> select(where: Cmd, includeOptional: Boolean = true) =
-    select<T>(where, null, -1, includeOptional)
-
-/** Executes SELECT with columns specified from primary constructor parameters and mutable properties
- * and WHERE clause content from [where] parameter, considering that:
- * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
- * - columns are named as primary constructor parameters in accordance with [Sql.convertNamesToSnakeCase] option,
- * @param where WHERE clause content specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * After conditions can be specified any clause that goes after WHERE (e.g. ORDER BY or LIMIT).
- * @param capacity If specified, sets initial capacity of [ArrayList] where results are stored.
- * It does not limit number of rows fetched from database. You can add LIMIT in [where] query.
- * @param includeOptional true (the default) to include into SELECT clause constructor parameters
- * that has default values and mutable properties declared in class body,
- * otherwise are included only primary constructor parameters that does not have default value.
- * @return [ArrayList] with objects of specified type, created from query results by mapping
- * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
- * If property doesn't have corresponding column, then annotate it with [SqlIgnore] or set [includeOptional] to false. */
-inline fun <reified T: Any> select(where: Cmd, capacity: Int = -1, includeOptional: Boolean = true) =
-    select<T>(where, null, capacity, includeOptional)
-
-/** Executes SELECT with columns specified from primary constructor parameters and mutable properties
- * with WHERE clause content from [where] parameter, considering that:
- * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
- * - columns are named as primary constructor parameters in accordance with [Sql.convertNamesToSnakeCase] option,
- * @param where WHERE clause content specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * After conditions can be specified any clause that goes after WHERE (e.g. ORDER BY or LIMIT).
- * @param capacity If specified, sets initial capacity of [ArrayList] where results are stored.
- * It does not limit number of rows fetched from database. You can add LIMIT in [where] query.
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @param includeOptional true (the default) to include into SELECT clause constructor parameters
- * that has default values and mutable properties declared in class body,
- * otherwise are included only primary constructor parameters that does not have default value.
- * @return [ArrayList] with objects of specified type, created from query results by mapping
- * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
- * If property doesn't have corresponding column, then annotate it with [SqlIgnore] or set [includeOptional] to false. */
-inline fun <reified T: Any> select(where: Cmd, con: Connection? = null, capacity: Int = -1, includeOptional: Boolean = true): ArrayList<T> {
-    // Implementation is moved to separate method, that receives generic type just as parameter
-    // (and thus does not need to be inline), because this method will be called in many places in client code,
-    // so it will blow app work set if implementation will be inlined.
-    val query = buildSelectQuery(T::class, where, includeOptional)
-    return read(query, capacity, con)
-}
-
-@PublishedApi
-internal fun <T: Any> buildSelectQuery(type: KClass<T>, where: Cmd, includeOptional: Boolean = true): Cmd
-{
-    val sb = StringBuilder("SELECT ")
-    val params = Cmd.getConstructor(type).parameters
-    val customNames = getParamsCustomNames(type, params)
-
-    val props = mutableMapOf<String, KProperty<*>>()
-    for (p in type.memberProperties) props[p.name] = p
-
-    for (p in params) {
-        val prop = props.remove(p.name!!) // remove instead of get to process further only props that don't correspond to params
-        if ((!p.isOptional || includeOptional) && (prop == null || !prop.hasAnnotation<SqlIgnore>()))
-            sb.append(customNames[p] ?: toDbCase(p.name!!), ',')
-    }
-    if (includeOptional)
-        for (p in props.values)
-            if (p is KMutableProperty<*> && !p.hasAnnotation<SqlIgnore>())
-                sb.append(colName(p), ',')
-
-    sb.deleteCharAt(sb.length - 1) // Remove trailing comma
-
-    sb.append(" FROM ")
-    sb.append(entityName(type))
-    sb.append(" WHERE ")
-    sb.append(where.sql)
-
-    return Cmd(sb.toString(), where.bindParams)
-}
-
-/** Runs specified query and returns single value from the first column of the first returned row.
- * If query returns no rows, then [IllegalArgumentException] is thrown.
- * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience. */
-inline fun <reified T: Any> readValue(query: Cmd, con: Connection? = null) =
-    readValueOrNull<T>(query, con) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
-
-/** Runs specified query and returns single value from the first column of the first returned row,
- * or null if query returned no rows.
- * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience. */
-inline fun <reified T: Any> readValueOrNull(query: Cmd, con: Connection? = null) =
-    query.readValues(T::class, 1, con).firstOrNull()
-
-/** Runs specified query and returns [ArrayList] with values from the first column of the result set.
- * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience. */
-inline fun <reified T: Any> readValues(query: Cmd, con: Connection? = null) =
-    query.readValues(T::class, -1, con)
-
-/** Runs specified query and returns object of specified type, created from the first row of query result by mapping
- * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
- * If query returns no rows, then [IllegalArgumentException] is thrown.
- * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience. */
-inline fun <reified T: Any> readOne(query: Cmd, con: Connection? = null) =
-    readOneOrNull<T>(query, con) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
-
-/** Runs specified query and returns object of specified type, created from the first row of query result by mapping
- * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
- * Returns null if query returned no rows.
- * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience. */
-inline fun <reified T: Any> readOneOrNull(query: Cmd, con: Connection? = null) =
-    query.read(T::class, 1, con).firstOrNull()
-
-/** Runs specified query and returns [ArrayList] with objects of specified type, created from query results by mapping
- * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
- * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience. */
-inline fun <reified T: Any> read(query: Cmd, con: Connection? = null) =
-    query.read(T::class, -1, con)
-
-/** Runs specified query and returns [ArrayList] with objects of specified type, created from query results by mapping
- * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
- * @param query SELECT query specified with -"..." or -"""...""" syntax.
- * @param capacity If specified, sets initial capacity of [ArrayList] where results are stored.
- * It does not limit number of rows fetched from database.
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience. */
-inline fun <reified T: Any> read(query: Cmd, capacity: Int, con: Connection? = null) =
-    query.read(T::class, capacity, con)
-
-/** Runs specified query and returns [ArrayList] with objects created from query results by [createItem] callback.
- * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param createItem callback that is called for each fetched row.
- * SqlPay provides extension methods on [ResultSet] like [enum] or [intVal] for all basic types
- * to read values from [ResultSet] with less code. */
-fun <T> read(query: Cmd, createItem: (r: ResultSet) -> T) =
-    read(query, -1, null, createItem)
-
-/** Runs specified query and returns [ArrayList] with objects created from query results by [createItem] callback.
- * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param capacity If specified, sets initial capacity of [ArrayList] where results are stored.
- * It does not limit number of rows fetched from database.
- * @param createItem callback that is called for each fetched row.
- * SqlPay provides extension methods on [ResultSet] like [enum] or [intVal] for all basic types
- * to read values from [ResultSet] with less code. */
-fun <T> read(query: Cmd, capacity: Int, createItem: (r: ResultSet) -> T) =
-    read(query, capacity, null, createItem)
-
-/** Runs specified query and returns [ArrayList] with objects created from query results by [createItem] callback.
- * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @param createItem callback that is called for each fetched row.
- * SqlPay provides extension methods on [ResultSet] like [enum] or [intVal] for all basic types
- * to read values from [ResultSet] with less code. */
-fun <T> read(query: Cmd, con: Connection, createItem: (r: ResultSet) -> T) =
-    read(query, -1, con, createItem)
-
-/** Runs specified query and returns [ArrayList] with objects created from query results by [createItem] callback.
- * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param capacity If specified, sets initial capacity of [ArrayList] where results are stored.
- * It does not limit number of rows fetched from database.
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @param createItem callback that is called for each fetched row.
- * SqlPay provides extension methods on [ResultSet] like [enum] or [intVal] for all basic types
- * to read values from [ResultSet] with less code. */
-fun <T> read(query: Cmd, capacity: Int, con: Connection? = null, createItem: (r: ResultSet) -> T) = query.doAction(con) {
-    val rs = it.executeQuery()
-
-    val results = if (capacity >= 0) ArrayList<T>(capacity) else ArrayList()
-    while (rs.next())
-        results.add(createItem(rs))
-    results
-}
-
-//------------------------------------------------------------------------------
-//-------------------------------- DML methods ---------------------------------
-//------------------------------------------------------------------------------
-
-/** Inserts specified entity to the table, considering that:
- * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
- * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option.
- * Properties annotated with [AutoGen] are not included into INSERT,
- * but are read from INSERT results if [updateAutoGenValues] is true.
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @param updateAutoGenValues true (the default) to update properties with values of autogenerated columns (e.g. ID).
- * Only values of properties annotated with [AutoGen] are updated.
- * @return number of inserted rows. */
-fun insert(entity: Any, con: Connection? = null, updateAutoGenValues: Boolean = true) =
-    execInsertOrUpdate(entity, null, con, updateAutoGenValues,
-        "INSERT INTO %s (", "") { _, sb, params -> appendValuesClause(sb, params.size) }
-
-/** Inserts multiple items in single batch, considering:
- * - all items are of the same type,
- * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
- * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option.
- * @param items any iterable source of items to insert.
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @return number of inserted rows. */
-inline fun <reified T: Any> insertMany(items: Iterable<T>, con: Connection? = null) =
-    // Public inline function can't access private members, while it must be inline to get generic type.
-    // So implementation is moved to separate internal method, that receives type just as parameter.
-    insertMany(T::class, items, con)
-
-@PublishedApi
-internal fun <T: Any> insertMany(itemClass: KClass<T>, items: Iterable<T>, con: Connection? = null): Int
-{
-    val tableName = entityName(itemClass::class)
-    val sb = StringBuilder("INSERT INTO $tableName (")
-
-    val props = itemClass.memberProperties.filter { !it.hasAnnotation<SqlIgnore>() && !it.hasAnnotation<AutoGen>() }
-
-    for (p in props)  {
-        sb.append(colName(p))
-        sb.append(',')
-    }
-    sb.deleteCharAt(sb.length - 1) // Remove trailing comma
-    appendValuesClause(sb, props.size)
-
-    val insertedCounts = Cmd(sb.toString(), ArrayList(props.size))
-        .doBatch(con, items) { item, params ->
-            for (p in props) addPropToBindParams(item, p, params)
-        }
-    return insertedCounts.sum()
-}
-
-private fun appendValuesClause(sb: StringBuilder, bindParamsCount: Int) {
-    sb.append(") VALUES (")
-    repeat(bindParamsCount) { sb.append("?,") }
-    sb.deleteCharAt(sb.length - 1) // Remove trailing comma
-    sb.append(')')
-}
-
-/** Updates values in the corresponding table from the specified entity, considering that:
- * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
- * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option,
- * - if [where] parameter is not specified, then property that maps to primary key column must be annotated with [Id].
- * Properties annotated with [AutoGen] are not included into UPDATE,
- * but are read from UPDATE results if [updateAutoGenValues] is true.
- * @param entity object to update.
- * @param where WHERE clause content specified with -"..." or -"""...""" syntax.
- * After conditions can be specified any clause, that goes after WHERE (e.g. ORDER BY or LIMIT).
- * If the parameter is specified, then it's appended to UPDATE command,
- * otherwise table is filtered by value from property annotated with [Id].
- * @param updateAutoGenValues true (the default) to update properties with values from autogenerated columns (e.g. ID).
- * Only values of properties annotated with [AutoGen] are updated.
- * @return number of updated rows. */
-fun update(entity: Any, where: Cmd? = null, updateAutoGenValues: Boolean = false) =
-    update(entity, null, where, updateAutoGenValues, null)
-
-/** Updates values in the corresponding table from the specified entity, considering that:
- * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
- * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option,
- * - if [where] parameter is not specified, then property that maps to primary key column must be annotated with [Id].
- * Properties annotated with [AutoGen] are not included into UPDATE,
- * but are read from UPDATE results if [updateAutoGenValues] is true.
- * @param entity object to update.
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @param where WHERE clause content specified with -"..." or -"""...""" syntax.
- * After conditions can be specified any clause, that goes after WHERE (e.g. ORDER BY or LIMIT).
- * If the parameter is specified, then it's appended to UPDATE command,
- * otherwise table is filtered by value from property annotated with [Id].
- * @param updateAutoGenValues true (the default) to update properties with values from autogenerated columns (e.g. ID).
- * Only values of properties annotated with [AutoGen] are updated.
- * @return number of updated rows. */
-fun update(entity: Any, con: Connection? = null, where: Cmd? = null, updateAutoGenValues: Boolean = false) =
-    update(entity, con, where, updateAutoGenValues, null)
-
-/** Updates only specified columns in the corresponding table from the specified entity, considering that:
- * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
- * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option,
- * - if [where] parameter is not specified, then property that maps to primary key column must be annotated with [Id].
- * Properties annotated with [AutoGen] are not included into UPDATE,
- * but are read from UPDATE results if [updateAutoGenValues] is true.
- * @param entity object to update.
- * @param where WHERE clause content specified with -"..." or -"""...""" syntax.
- * After conditions can be specified any clause, that goes after WHERE (e.g. ORDER BY or LIMIT).
- * If the parameter is specified, then it's appended to UPDATE command,
- * otherwise table is filtered by value from property annotated with [Id].
- * @param updateAutoGenValues true (the default) to update properties with values from autogenerated columns (e.g. ID).
- * Only values of properties annotated with [AutoGen] are updated.
- * @param propList Provide lambda with call to one of next functions:
- * - [only] - provides list of properties to update in database, e.g.:
- *
- * update(person) { only(::name) } - to update only 'name' column.
- * - [except] - provides list of properties to exclude, while all other properties will be updated in database, e.g.:
- *
- * update(person) { except(::name, ::city) } - to update all columns except 'name' and 'city'.
- * - [set] - same as [only], but also sets specified properties to specified values before update, e.g.:
- *
- * update(person) { set (::position to "Developer") } - to set value in both 'position' property and column.
- * @return number of updated rows. */
-fun <T: Any> update(entity: T, where: Cmd? = null, updateAutoGenValues: Boolean = false, propList: T.() -> PropsToUpdate) =
-    update(entity, null, where, updateAutoGenValues, propList)
-
-/** Updates only specified columns in the corresponding table from the specified entity, considering that:
- * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
- * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option,
- * - if [where] parameter is not specified, then property that maps to primary key column must be annotated with [Id].
- * Properties annotated with [AutoGen] are not included into UPDATE,
- * but are read from UPDATE results if [updateAutoGenValues] is true.
- * @param entity object to update.
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @param where WHERE clause content specified with -"..." or -"""...""" syntax.
- * After conditions can be specified any clause, that goes after WHERE (e.g. ORDER BY or LIMIT).
- * If the parameter is specified, then it's appended to UPDATE command,
- * otherwise table is filtered by value from property annotated with [Id].
- * @param updateAutoGenValues true (the default) to update properties with values from autogenerated columns (e.g. ID).
- * Only values of properties annotated with [AutoGen] are updated.
- * @param propList Provide lambda with call to one of next functions:
- * - [only] - provides list of properties to update in database, e.g.:
- *
- * update(person) { only(::name) } - to update only 'name' column.
- * - [except] - provides list of properties to exclude, while all other properties will be updated in database, e.g.:
- *
- * update(person) { except(::name, ::city) } - to update all columns except 'name' and 'city'.
- * - [set] - same as [only], but also sets specified properties to specified values before update, e.g.:
- *
- * update(person) { set (::position to "Developer") } - to set value in both 'position' property and column.
- * @return number of updated rows. */
-fun <T: Any> update(entity: T, con: Connection? = null, where: Cmd? = null, updateAutoGenValues: Boolean = false, propList: (T.() -> PropsToUpdate)?) =
-    execInsertOrUpdate(entity, propList?.let { entity.it() }, con, updateAutoGenValues, "UPDATE %s SET ", " = ?",
-        if (where == null) ::buildWhereWithId
-        else { _, sb, params ->
-            sb.append(" WHERE ")
-            sb.append(where.sql)
-            params.addAll(where.bindParams)
-            Unit
-        })
-
-/** Is created by [only], [except] and [set] functions to return as lambda result
- * of 'propList' parameter of [update] function. Don't use it directly. */
-class PropsToUpdate internal constructor(
-    val include: Array<out KProperty0<*>>?,
-    val exclude: Array<out KProperty0<*>>?
-)
-
-/** Provides list of properties to update in database, see [update] for description. */
-fun only(vararg items: KProperty0<*>) = PropsToUpdate(items, null)
-
-/** Provides list of properties to exclude from update, see [update] for description. */
-fun except(vararg items: KProperty0<*>) = PropsToUpdate(null, items)
-
-/** Same as [only], but also to sets specified values to specified properties, see [update] for description. */
-@Suppress("UNCHECKED_CAST")
-fun set(vararg items: Pair<KProperty0<*>, Any?>) = PropsToUpdate(
-    Array(items.size) {
-        (items[it].first as KMutableProperty0<Any?>).set(items[it].second)
-        items[it].first
-    }, null)
-
-/** Updates specified columns in the corresponding table, considering that:
- * - table is named as [entity] class in accordance with [Sql.convertNamesToSnakeCase] option,
- * - property that maps to primary key column is annotated with [Id].
- * This overload is useful when need to update columns for which there are no corresponding properties in the class.
- * @param entity Entity to update.
- * @param params list of pairs <column name - value to set>.
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @return number of rows affected. */
-fun update(entity: Any, params: List<Pair<String, Any?>>, con: Connection? = null): Int {
-    val sb = StringBuilder("UPDATE ${entityName(entity::class)} SET ")
-
-    val bindParams = ArrayList<Any?>(params.size)
-    params.forEach {
-        sb.append(it.first)
-        sb.append(" = ?,")
-        bindParams.add(it.second)
-    }
-    sb.deleteCharAt(sb.length - 1) // Remove trailing comma
-
-    buildWhereWithId(entity, sb, bindParams)
-    return exec(Cmd(sb.toString(), bindParams), con)
-}
-
-/** Updates specified columns with specified values in the corresponding table, considering that:
- * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
- * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option.
- * @param where WHERE clause content specified with -"..." or -"""...""" syntax.
- * After conditions can be specified any clause, that goes after WHERE (e.g. ORDER BY or LIMIT).
- * If the parameter is specified, then it's appended to UPDATE command,
- * otherwise table is filtered by value from property annotated with [Id].
- * @param propsToSet Pairs of property - value to set,
- * e.g.: Person::position to "Developer", Person::isHired to true.
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @return number of updated rows. */
-inline fun <reified T> update(where: Cmd, vararg propsToSet: Pair<KProperty1<*, *>, Any?>, con: Connection? = null) =
-    // Public inline function can't access private members, while it must be inline to get generic type.
-    // So implementation is moved to separate internal method, that receives type just as parameter.
-    execUpdate(T::class, where, propsToSet, con)
-
-@PublishedApi
-internal fun execUpdate(classType: KClass<*>, where: Cmd, propsToSet: Array<out Pair<KProperty1<*, *>, Any?>>, con: Connection?): Int
-{
-    val sb = StringBuilder("UPDATE ${entityName(classType)} SET ")
-    val bindParams = ArrayList<Any?>(propsToSet.size)
-
-    for ((prop, value) in propsToSet) {
-        appendCol(sb, colName(prop), " = ?")
-        addValueToBindParams(value, classType, prop, bindParams)
-    }
-    sb.deleteCharAt(sb.length - 1) // Remove trailing comma
-
-    sb.append(" WHERE ")
-    sb.append(where.sql)
-    bindParams.addAll(where.bindParams)
-
-    return exec(Cmd(sb.toString(), bindParams), con)
-}
-
-/** Deletes row in the corresponding table for the specified entity, considering that:
- * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
- * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option,
- * - property that maps to primary key column is annotated with [Id].
- * @param entity Entity to delete.
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @return number of rows deleted. */
-fun delete(entity: Any, con: Connection? = null): Int {
-    val sb = StringBuilder("DELETE FROM ${entityName(entity::class)}")
-    val bindParams = ArrayList<Any?>(1)
-    buildWhereWithId(entity, sb, bindParams)
-    return exec(Cmd(sb.toString(), bindParams), con)
-}
-
-/** Deletes rows that meet [where] conditions, considering that:
- * - table is named as class in accordance with [Sql.convertNamesToSnakeCase] option,
- * - columns are named as properties in accordance with [Sql.convertNamesToSnakeCase] option.
- * @param where WHERE clause content specified with -"..." or -"""...""" syntax.
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @return number of rows deleted. */
-inline fun <reified T: Any> delete(where: Cmd, con: Connection? = null): Int {
-    val sb = StringBuilder("DELETE FROM ${entityName(T::class)} WHERE ${where.sql}")
-    return exec(Cmd(sb.toString(), where.bindParams), con)
-}
-
-/** Executes INSERT, UPDATE, DELETE or command with no results.
- * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param autoGenColumns array of column names for witch to return values after execution.
- * Note that unlike [read] and [select] methods where
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @return map of colName - value for inserted/updated row. Map contains columns specified in [autoGenColumns].
- * It is useful to get values of auto-generated columns (e.g. ID). Returns null if no rows are updated. */
-fun execWithResults(query: Cmd, autoGenColumns: Array<String>? = null, con: Connection? = null) = query.doAction(con, autoGenColumns) {
-    if (it.executeUpdate() == 0) return@doAction null
-    it.generatedKeys.use {  rs ->
-        rs.next()
-        val generatedValues = mutableMapOf<String, Any?>()
-        for (i in 1 .. rs.metaData.columnCount)
-            generatedValues[rs.metaData.getColumnLabel(i)] = rs.getObject(i)
-        generatedValues
-    }
-}
-
-/** Executes INSERT, UPDATE, DELETE or command with no results.
- * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
- * @return value from the first column of the first row of returned result set, or null if result set is empty.
- * Note that if RETURNING clause was not specified in the query,
- * then driver returns all columns, and first one can be any of them. */
-fun execWithResult(query: Cmd, con: Connection? = null) = query.doAction(con) {
-    if (it.executeUpdate() == 0) return@doAction null
-    it.generatedKeys.next()
-    it.generatedKeys.getObject(1)
-}
-
-/** Executes INSERT, UPDATE, DELETE or command with no results, and returns number of rows affected.
- * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).
- * @param con If specified, then command is executed on it, and it is not closed after use.
- * Otherwise, connection is obtained from pool and released after use.
- * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience. */
-fun exec(query: Cmd, con: Connection? = null) = query.doAction(con) { it.executeUpdate() }
-
-//------------------------------------------------------------------------------
-//------------------------------ private methods -------------------------------
-//------------------------------------------------------------------------------
 
 internal typealias RefreshMap = MutableMap<String, KMutableProperty1<Any, Any?>?>
 private val emptyMap: RefreshMap = mutableMapOf() // static value to avoid creation on each call if not needed.
 
-private inline fun execInsertOrUpdate(entity: Any, propsToUpdate: PropsToUpdate?,
-                                      con: Connection?, updateAutoGenValues: Boolean,
-                                      statement: String, paramPlaceholder: String,
-                                      buildParamsClause: (Any, StringBuilder, ArrayList<Any?>) -> Unit): Int
+internal inline fun execInsertOrUpdate(entity: Any, propsToUpdate: PropsToUpdate?,
+                                       con: Connection?, updateAutoGenValues: Boolean,
+                                       statement: String, paramPlaceholder: String,
+                                       buildParamsClause: (Any, StringBuilder, ArrayList<Any?>) -> Unit): Int
 {
     val tableName = entityName(entity::class)
     val sb = StringBuilder(statement.format(tableName))
@@ -628,7 +51,7 @@ private inline fun execInsertOrUpdate(entity: Any, propsToUpdate: PropsToUpdate?
 
     buildParamsClause(entity, sb, bindParams)
 
-    return Cmd(sb.toString(), bindParams).readResults(entity, con, autoGenColumns)
+    return Query(sb.toString(), bindParams).execAndReadResults(entity, con, autoGenColumns)
 }
 
 private fun processProp(entity: Any, p: KProperty<*>, bindParams: ArrayList<Any?>,
@@ -650,21 +73,21 @@ private fun addToRefreshListIfAutoGen(p: KProperty<*>, updateAutoGenValues: Bool
     }
     else false
 
-private fun appendCol(sb: StringBuilder, colName: String, paramPlaceholder: String) {
+internal fun appendCol(sb: StringBuilder, colName: String, paramPlaceholder: String) {
     sb.append(colName)
     sb.append(paramPlaceholder)
     sb.append(',')
 }
 
-private fun buildWhereWithId(entity: Any, sb: StringBuilder, bindParams:ArrayList<Any?>) {
-    val id = Cmd.getIdProperty(entity.javaClass.kotlin)
+internal fun buildWhereWithId(entity: Any, sb: StringBuilder, bindParams:ArrayList<Any?>) {
+    val id = getIdProperty(entity.javaClass.kotlin)
     sb.append(" WHERE ")
     sb.append(colName(id))
     sb.append(" = ?")
     addPropToBindParams(entity, id, bindParams)
 }
 
-private fun addPropToBindParams(entity: Any, p: KProperty<*>, bindParams: MutableList<Any?>) {
+internal fun addPropToBindParams(entity: Any, p: KProperty<*>, bindParams: MutableList<Any?>) {
     @Suppress("UNCHECKED_CAST")
     val value = when (p) {
         is KProperty0<*> -> p.get() // property obtained via myObject::myProp (receiver object is already bound).
@@ -676,7 +99,7 @@ private fun addPropToBindParams(entity: Any, p: KProperty<*>, bindParams: Mutabl
     addValueToBindParams(value, entity::class, p, bindParams)
 }
 
-private fun addValueToBindParams(value: Any?, classType: KClass<*>, p: KProperty<*>, bindParams: MutableList<Any?>) {
+internal fun addValueToBindParams(value: Any?, classType: KClass<*>, p: KProperty<*>, bindParams: MutableList<Any?>) {
     val paramValue = if (value is List<*>) {
         // Wrap List with object that also contains information about generic type of the List.
         // It's necessary to handle empty Lists, because unlike Array, empty List does not contain
@@ -691,6 +114,19 @@ private fun addValueToBindParams(value: Any?, classType: KClass<*>, p: KProperty
         value
     bindParams.add(paramValue)
 }
+
+@PublishedApi
+internal fun <T: Any> getConstructor(type: KClass<T>): KFunction<T> {
+    val error = "Class must have primary constructor where are declared all properties that should be read from database."
+    val constr = type.primaryConstructor ?: throw SqlPalException(error)
+    if (constr.parameters.isEmpty()) throw SqlPalException(error)
+    return constr
+}
+
+@PublishedApi
+internal fun <T: Any> getIdProperty(type: KClass<T>) = type.memberProperties.find { it.hasAnnotation<Id>() }
+    ?: throw SqlPalException("Unable to generate WHERE clause with ID condition for ${type.qualifiedName} class, " +
+            "as it does not have property annotated with @Id.")
 
 @PublishedApi
 internal fun entityName(type: KClass<*>) = customName(type) ?: toDbCase(type.simpleName!!)
@@ -714,4 +150,35 @@ internal fun getParamsCustomNames(classType: KClass<*>, params: List<KParameter>
 
 internal fun customName(type: KAnnotatedElement) = type.findAnnotation<SqlName>()?.name
 
-internal fun toDbCase(name: String) = if (Sql.convertNamesToSnakeCase) Cmd.camel2Snake(name) else name
+internal fun toDbCase(name: String) = if (SqlPal.convertNamesToSnakeCase) camel2Snake(name) else name
+
+/** Converts String from camelCase to snake_case. */
+private fun camel2Snake(name: String): String {
+    val sb = StringBuilder()
+    for (i in name.indices) {
+        if (i > 0 && name[i].isUpperCase())
+            sb.append('_')
+        sb.append(name[i].lowercaseChar())
+    }
+    return sb.toString()
+}
+
+/** Converts String from snake_case to camelCase.*/
+private fun snake2Camel(name: String): String {
+    var i = 0
+    val sb = StringBuilder()
+    while (i < name.length) {
+        if (name[i] != '_') sb.append(name[i])
+        else if (i++ < name.length) sb.append(name[i].uppercase())
+        i++
+    }
+    return sb.toString()
+}
+
+@Suppress("UNCHECKED_CAST")
+internal fun String.toEnum(enumType: KType) =
+    java.lang.Enum.valueOf(enumType.jvmErasure.java as Class<out Enum<*>>, this)
+
+internal val KType.isEnum get() = kClass?.java?.isEnum == true
+
+internal val KType.kClass get() = classifier as? KClass<*>
