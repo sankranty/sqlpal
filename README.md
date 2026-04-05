@@ -97,8 +97,8 @@ SQL is expressive language, and modern IDEs provide syntax highlighting and code
 for SQL strings inside program code. We just need convenient way specify parameters 
 and possibility to do it dynamically.
 
-For this SqlPal uses standard Kotlin string interpolation and Terpal plugin. 
-When you write -"SELECT * FROM person WHERE id = $id" (note unary minus before string) 
+For this SqlPal uses standard Kotlin string interpolation and [Terpal](https://github.com/ExoQuery/Terpal) plugin. 
+When you write `-"SELECT * FROM person WHERE id = $id"` (note unary minus before string) 
 it is compiled into object that contains query string and bind parameters from provided values, 
 so SqlPal just executes it, thus no runtime overhead for query construction 
 and no need to manually specify bind parameters.
@@ -109,14 +109,14 @@ Also, SqlPal provides methods to perform most of routine tasks with single line,
 
 There are 3 options:
 
-**Set datasource parameters**
+**1. Set datasource parameters**
 ```kotlin
 SqlPal.setDataSource("jdbc:driver://address/db", "user", "pass")
 ```
 SqlPal will create Hikari connection pool and use it for all operations. 
 Optionally you can specify other parameters.
----
-**Provide existing datasource**
+
+**2. Provide existing datasource**
 ```kotlin
 val ds = // get datasource from your framework
 SqlPal.setDataSource(ds)
@@ -126,8 +126,8 @@ or returning them to pool, if it's pooled datasource.
 
 Is suitable for case when you already have some framework that provides datasource, 
 or if you for some reason don't want Hikari connection pool to be used.
----
-**Provide connection on methods call**
+
+**3. Provide connection on methods call**
 
 All SqlPal methods allow to optionally specify connection. For such call setup is not needed.
 
@@ -239,7 +239,7 @@ then set `SqlPal.storeArraysAs` to appropriate value.
 If database supports arrays of enum, then SqlPal will store lists and arrays of enum as database array of enum.
 If it's not desired, then set `SqlPal.useEnumArrays` to false, to store enums as strings.
 
-### Performance considerations
+### Performance tuning
 
 SqlPal is designed to be as fast as possible out of the box, tuning is necessary only in rare cases. 
 In most cases the main performance impact depends on optimization of queries and database indexes.
