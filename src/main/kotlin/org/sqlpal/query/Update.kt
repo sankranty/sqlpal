@@ -171,7 +171,7 @@ fun update(entity: Any, params: List<Pair<String, Any?>>, con: Connection? = nul
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return number of updated rows. */
-inline fun <reified T> update(where: Query, vararg propsToSet: Pair<KProperty1<*, *>, Any?>, con: Connection? = null) =
+inline fun <reified T> update(where: Query, vararg propsToSet: Pair<KProperty1<T, *>, Any?>, con: Connection? = null) =
     // Public inline function can't access private members, while it must be inline to get generic type.
     // So implementation is moved to separate internal method, that receives type just as parameter.
     execUpdate(T::class, where, propsToSet, con)
