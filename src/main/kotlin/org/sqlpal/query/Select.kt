@@ -44,7 +44,45 @@ inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null): 
     return readOneOrNull(query, con)
 }
 
-/** Executes SELECT with columns specified from primary constructor parameters and mutable properties
+/** Executes SELECT with columns specified from primary constructor parameters and mutable properties,
+ * and WHERE clause content from [where] parameter, considering that:
+ * - table is named as class in accordance with [SqlPal.convertNamesToSnakeCase] option,
+ * - columns are named as primary constructor parameters in accordance with [SqlPal.convertNamesToSnakeCase] option,
+ * @param where WHERE clause content specified with -"..." or -"""...""" syntax (see [Sql] for details).
+ * After conditions can be specified any clause that goes after WHERE (e.g. ORDER BY or LIMIT).
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
+ * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
+ * @param includeOptional true (the default) to include into SELECT clause constructor parameters
+ * that has default values and mutable properties declared in class body,
+ * otherwise are included only primary constructor parameters that does not have default value.
+ * @return object of specified type, created from the first row of query results by mapping
+ * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
+ * If query returns no rows, then [IllegalArgumentException] is thrown.
+ * If property doesn't have corresponding column, then annotate it with [SqlIgnore] or set [includeOptional] to false. */
+inline fun <reified T: Any> selectOne(where: Query, con: Connection? = null, includeOptional: Boolean = true) =
+    selectOneOrNull<T>(where, con, includeOptional) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
+
+/** Executes SELECT with columns specified from primary constructor parameters and mutable properties,
+ * and WHERE clause content from [where] parameter, considering that:
+ * - table is named as class in accordance with [SqlPal.convertNamesToSnakeCase] option,
+ * - columns are named as primary constructor parameters in accordance with [SqlPal.convertNamesToSnakeCase] option,
+ * @param where WHERE clause content specified with -"..." or -"""...""" syntax (see [Sql] for details).
+ * After conditions can be specified any clause that goes after WHERE (e.g. ORDER BY or LIMIT).
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
+ * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
+ * @param includeOptional true (the default) to include into SELECT clause constructor parameters
+ * that has default values and mutable properties declared in class body,
+ * otherwise are included only primary constructor parameters that does not have default value.
+ * @return object of specified type, created from the first row of query results by mapping
+ * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters),
+ * or null if nothing was found.
+ * If property doesn't have corresponding column, then annotate it with [SqlIgnore] or set [includeOptional] to false. */
+inline fun <reified T: Any> selectOneOrNull(where: Query, con: Connection? = null, includeOptional: Boolean = true) =
+    select<T>(where, con, -1, includeOptional).firstOrNull()
+
+/** Executes SELECT with columns specified from primary constructor parameters and mutable properties,
  * and WHERE clause content from [where] parameter, considering that:
  * - table is named as class in accordance with [SqlPal.convertNamesToSnakeCase] option,
  * - columns are named as primary constructor parameters in accordance with [SqlPal.convertNamesToSnakeCase] option,
@@ -59,7 +97,7 @@ inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null): 
 inline fun <reified T: Any> select(where: Query, includeOptional: Boolean = true) =
     select<T>(where, null, -1, includeOptional)
 
-/** Executes SELECT with columns specified from primary constructor parameters and mutable properties
+/** Executes SELECT with columns specified from primary constructor parameters and mutable properties,
  * and WHERE clause content from [where] parameter, considering that:
  * - table is named as class in accordance with [SqlPal.convertNamesToSnakeCase] option,
  * - columns are named as primary constructor parameters in accordance with [SqlPal.convertNamesToSnakeCase] option,
@@ -76,7 +114,7 @@ inline fun <reified T: Any> select(where: Query, includeOptional: Boolean = true
 inline fun <reified T: Any> select(where: Query, capacity: Int = -1, includeOptional: Boolean = true) =
     select<T>(where, null, capacity, includeOptional)
 
-/** Executes SELECT with columns specified from primary constructor parameters and mutable properties
+/** Executes SELECT with columns specified from primary constructor parameters and mutable properties,
  * with WHERE clause content from [where] parameter, considering that:
  * - table is named as class in accordance with [SqlPal.convertNamesToSnakeCase] option,
  * - columns are named as primary constructor parameters in accordance with [SqlPal.convertNamesToSnakeCase] option,
