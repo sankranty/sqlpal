@@ -7,11 +7,12 @@ import java.sql.Connection
 //-------------------- Contains methods to execute DML query -------------------//
 //////////////////////////////////////////////////////////////////////////////////
 
-
 /** Executes INSERT, UPDATE, DELETE or command with no results.
  * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param autoGenColumns array of column names for witch to return values after execution.
- * Note that unlike [read] and [select] methods where
+ * Note that unlike [read] and [select] methods, where types of values are known and thus all supported types
+ * are mapped correctly, here values are provided by JDBC driver, so it will not produce values
+ * of complex types like enums or lists.
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
