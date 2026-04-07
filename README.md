@@ -8,7 +8,18 @@ Ultra lightweight ORM for Kotlin.
 
 ## Quick Overview
 
-Setup is done via single line as well as most of the operations (no need to manually specify bind parameters):
+Add to dependencies:
+```kotlin
+plugins {
+    // Is used to specify bind parameters directly in query string.
+    id("io.exoquery.terpal-plugin") version "1.8.21-0.1.0"
+}
+
+dependencies {
+    implementation("org.sqlpal:sqlpal:1.0.3")
+}
+```
+And most of the operations are done via single line (no need to manually map bind parameters):
 ```kotlin
 enum class Hobby { Sports, Art, Travelling, Coding }
 
