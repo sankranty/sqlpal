@@ -368,7 +368,8 @@ private fun ResultSet.readEnumArray(colIndex: Int, enumType: KType): Array<Enum<
     // Enum array must be typed by certain enum, not Enum<*>,
     // otherwise type mismatch will occur on assigning it to appropriate property.
     // So create it via reflection to explicitly specify type.
-    val enumArray = java.lang.reflect.Array.newInstance(enumType.javaClass, arr.size) as Array<Enum<*>>
+    val enumClass = (enumType.classifier as? KClass<*>)?.java
+    val enumArray = java.lang.reflect.Array.newInstance(enumClass, arr.size) as Array<Enum<*>>
     for (i in arr.indices) enumArray[i] = arr[i].toEnum(enumType)
     return enumArray
 }
