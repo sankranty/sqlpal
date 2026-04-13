@@ -19,14 +19,63 @@ suspend fun main(args: Array<String>)
 
     when {
         args.contains("ins") -> ins3()
-        args.contains("insm") -> insMany()
+        args.contains("ins-many") -> insMany()
         args.contains("upd") -> upd3()
         args.contains("find") -> find()
-        args.contains("sel") -> sel3()
+        args.contains("sel") -> sel()
         args.contains("json") -> json()
+        args.contains("if-else") -> ifElse()
         args.contains("gen") -> insert(args.contains("big"))
         else -> select(args.contains("prep"))
     }
+}
+
+fun ifElse() {
+    var female = true
+    var economist = true
+    var education = true
+
+    println("Only female")
+    select<Person>(-"""
+        $If $female gender = 'female'
+        $Else$If $economist work = 'Economist'
+        $Else$If $education education = 'scienceDegree'
+        $Else height < 160 
+        LIMIT 10
+    """).forEach { println(it.gender) }
+
+    female = false
+    println()
+    println("Economists")
+    select<Person>(-"""
+        $If $female gender = 'female'
+        $Else$If $economist work = 'Economist'
+        $Else$If $education education = 'scienceDegree'
+        $Else height < 160 
+        LIMIT 10
+    """).forEach { println(it.work) }
+
+    economist = false
+    println()
+    println("Who has scienceDegree")
+    select<Person>(-"""
+        $If $female gender = 'female'
+        $Else$If $economist work = 'Economist'
+        $Else$If $education education = 'scienceDegree'
+        $Else height < 160 
+        LIMIT 10
+    """).forEach { println(it.education) }
+
+    education = false
+    println()
+    println("With height 160")
+    select<Person>(-"""
+        $If $female gender = 'female'
+        $Else$If $economist work = 'Economist'
+        $Else$If $education education = 'scienceDegree'
+        $Else height < 160 
+        LIMIT 10
+    """).forEach { println(it.height) }
 }
 
 fun json() {
@@ -144,6 +193,8 @@ fun sel() {
 
     val work = "Economist"
     select<Person>(-"work = $work and gender = ${Gender.female}").forEach { println("Person $it") }
+
+    select<Person>(-"id < 20 $If ${false} and gender = ${Gender.female}").forEach { println("Person $it") }
 }
 
 fun sel3() {

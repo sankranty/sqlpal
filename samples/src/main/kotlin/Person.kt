@@ -2,7 +2,7 @@
 import org.sqlpal.*
 import java.time.LocalDate
 
-class Person (
+data class Person (
     var id: Long? = null,
     var name: String,
 

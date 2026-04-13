@@ -5,19 +5,25 @@ import io.exoquery.terpal.InterpolatorFunction
 import io.exoquery.terpal.interpolatorBody
 import kotlin.reflect.*
 
-/** 'If' means - if value of next param is true, then continue normally, otherwise skip to line break. */
+/** Used in [Sql] string and means - if value of next param is true, then continue normally,
+ * otherwise skip to the line break. See [Sql] for details. */
 object If
 
-/** 'I' means - inline value of next param directly into string instead of adding it as binding parameter. */
+/** Used in [Sql] string and means - if condition of the [If] is true, then skip to the line break,
+ * otherwise continue normally. See [Sql] for details. */
+object Else
+
+/** Used in [Sql] string and means - inline value of next param directly into the string
+ * instead of adding it as a binding parameter. See [Sql] for details. */
 object I
 
-/** Exception that signals incorrect placement of parameters. */
+/** Exception that signals incorrect placement of the specified parameters. */
 class SqlInterpolatorException(message: String) : Exception(message)
 
-/** Wrapper for [List] that also contains information about generic type of the [List]. */
+/** Wrapper for the [List] that also contains information about generic type of the [List]. */
 class ListAndType (val list: List<*>, val componentType: KClass<*>)
 
-/** Wraps [List] with object that also contains information about generic type of the [List].
+/** Wraps [List] with an object that also contains information about generic type of the [List].
  * It's necessary to handle empty lists, as unlike [Array], empty [List] does not contain
  * information about its generic type, what makes impossible to map it to appropriate SQL type. */
 inline operator fun <reified T> List<T>?.unaryMinus() =
@@ -27,14 +33,15 @@ inline operator fun <reified T> List<T>?.unaryMinus() =
 @InterpolatorFunction<Sql>(Sql::class)
 operator fun String.unaryMinus(): Query = interpolatorBody()
 
-/** Stores interpolated values from provided String as bind parameters
+/** Stores interpolated values from the provided String as a bind parameters
  * and returns [Query] object that can be used to execute provided query.
  * It can be used with Sql("...") or Sql("""...""") syntax, as well as with more compact -"..." or -"""...""" syntax.
  *
- * To conditionally exclude part of query use $[If] $condition where 'condition' is boolean variable.
- * If 'condition' is false, then rest of content to line break is not included.
+ * To include part of the query conditionally use $[If] $condition where 'condition' is boolean variable.
+ * If 'condition' is false, then the rest of the content to the line break is not included.
+ * For several mutually exclusive conditions use $[Else]$[If] and $[Else] which also have scope upto the line break.
  *
- * To inline parameter directly into string (instead of extracting it as bind parameter), use $[I]$ instead of $. */
+ * To inline value directly into the query string (instead of adding it as a bind parameter), use $[I]$ instead of $. */
 object Sql: Interpolator<Any, Query> {
 
     override fun interpolate(parts: () -> List<String>, params: () -> List<Any>): Query {
@@ -43,29 +50,33 @@ object Sql: Interpolator<Any, Query> {
 
         val builder = StringBuilder()
         val bindParams = mutableListOf<Any?>()
-        var i = 0
+        var i = 0 // Index of parameter and string before it.
+        var isTrue = false // To know If condition in the Else block.
 
-        builder.append(strings[i])
+        builder.append(strings[i]) // There is always a string before the first parameter, even when the parameter is at the very beginning.
         while (i < params.count()) {
-            // 'If' means - if value of next param is true then continue normally, otherwise skip to line break.
             if (params[i] == If) {
-                i++ // Skip blank string between 'If' and condition parameter.
-                if (paramIsFalse(i, params)) {
-                    val (strIndex, strAfterLineBreak) = skipToLineBreak(i, strings)
-                    builder.append(strAfterLineBreak)
-                    i = strIndex + 1
+                i++ // Move to the condition parameter and blank string between 'If' and condition parameter.
+                isTrue = paramValueIsTrue(i, params)
+                if (!isTrue) {
+                    i = skipToLineBreakAndAppendRestOfString(i, strings, builder)
                     continue
                 }
             }
-            // 'I' means - inline value of next param directly to string instead of adding it as binding parameter.
-            else if (params[i] == I) {
-                i++  // Skip blank string between 'I' and next parameter.
-                builder.append(params[i])
+            else if (params[i] == Else) {
+                if (isTrue) {
+                    i = skipToLineBreakAndAppendRestOfString(i, strings, builder)
+                    continue
+                }
             }
-            // All other values add as binding parameters.
+            else if (params[i] == I) {
+                i++  // Move to the parameter after 'I'.
+                builder.append(params[i]) // inline value of the param directly into the string instead of adding it as a binding parameter.
+            }
+            // All other values add as a binding parameters.
             else {
                 if (params[i] is List<*>) throw SqlInterpolatorException(
-                    "Parameters of List type, specified in query, must be prefixed with '-'. " +
+                    "Parameters of the List type, specified in the query, must be prefixed with the '-'. " +
                         "Unary minus operator is overloaded by SqlPal and converts List to typed Array." +
                         "It's necessary to handle empty Lists, because unlike Array, empty List does not contain " +
                         "information about its generic type, what makes impossible to map it to appropriate SQL type.")
@@ -73,30 +84,33 @@ object Sql: Interpolator<Any, Query> {
                 bindParams.add(params[i])
             }
             i++
-            builder.append(strings[i])
+            builder.append(strings[i]) // Append string after parameter.
         }
         return Query(builder.toString(), bindParams)
     }
 
-    private fun paramIsFalse(paramIndex: Int, params: List<Any>): Boolean {
+    private fun paramValueIsTrue(paramIndex: Int, params: List<Any>): Boolean {
         if (paramIndex >= params.count())
-            throw SqlInterpolatorException("'If' parameter can't be last. Add boolean parameter right after it.")
+            throw SqlInterpolatorException("'If' parameter can't be the last one. Add boolean parameter right after it.")
         if (params[paramIndex] !is Boolean)
-            throw SqlInterpolatorException("Next parameter after 'If' must be of Boolean type.")
+            throw SqlInterpolatorException("Next parameter after the 'If' must be of Boolean type.")
 
-        return !(params[paramIndex] as Boolean)
+        return (params[paramIndex] as Boolean)
     }
 
-    private fun skipToLineBreak(from: Int, strings: List<String>): Pair<Int, String> {
-        var i = from
-        var breakIndex: Int
-
+    // Looks for string with line break starting from the string next to 'from' index.
+    // If found, then part of the string after line break is appended to StringBuilder.
+    // Returns index of the string that contains line break, or index of the last string if no line break found.
+    private fun skipToLineBreakAndAppendRestOfString(from: Int, strings: List<String>, builder: StringBuilder): Int {
+        var i = from + 1
         while (i < strings.count()) {
-            breakIndex = strings[i].indexOf('\n')
-            if (breakIndex >= 0)
-                return Pair(i, strings[i].substring(breakIndex + 1))
+            val breakIndex = strings[i].indexOf('\n')
+            if (breakIndex >= 0) {
+                builder.append(strings[i], breakIndex + 1, strings[i].length)
+                return i
+            }
             i++
         }
-        return Pair(i - 1, strings[i - 1])
+        return i
     }
 }
