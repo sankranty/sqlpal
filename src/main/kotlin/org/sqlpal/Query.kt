@@ -298,10 +298,6 @@ class Query @PublishedApi internal constructor(
         }
     }
 
-    // Represents values necessary to uniformly process any kind of iterable source
-    // regardless of its type (List, Array<*>, ByteArray, etc.).
-    private class Items(val iterator: Iterator<*>, val size: Int, val isTypedArray: Boolean = true)
-
     private fun setArray(statement: PreparedStatement, index: Int, value: Any, componentType: KClass<out Any>?) {
         componentType ?: throw IllegalArgumentException("Query has parameter of type List<*> that is not wrapped " +
                 "with ListAndType object, what indicates a bug or incorrect use of SqlPal.")
@@ -325,21 +321,6 @@ class Query @PublishedApi internal constructor(
             statement.setObject(index, array, Types.ARRAY)
         }
     }
-
-    private fun getItems(value: Any) =
-        // There is no base class for arrays, but all arrays and lists have iterator, so get it to iterate over array.
-        when (value) {
-            is List<*> -> Items(value.iterator(), value.size, false)
-            is Array<*> -> Items(value.iterator(), value.size, false)
-            is ByteArray -> Items(value.iterator(), value.size)
-            is ShortArray -> Items(value.iterator(), value.size)
-            is IntArray -> Items(value.iterator(), value.size)
-            is LongArray -> Items(value.iterator(), value.size)
-            is FloatArray -> Items(value.iterator(), value.size)
-            is DoubleArray -> Items(value.iterator(), value.size)
-            is BooleanArray -> Items(value.iterator(), value.size)
-            else -> Items((value as CharArray).iterator(), value.size)
-        }
 
     private fun setEnumArray(statement: PreparedStatement, index: Int, items: Items, componentType: KClass<*>) {
         // Convert enum values to strings.

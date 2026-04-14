@@ -24,6 +24,7 @@ suspend fun main(args: Array<String>)
         args.contains("find") -> find()
         args.contains("sel") -> sel()
         args.contains("json") -> json()
+        args.contains("where-in") -> whereIn()
         args.contains("if-else") -> ifElse()
         args.contains("gen") -> insert(args.contains("big"))
         else -> select(args.contains("prep"))
@@ -76,6 +77,16 @@ fun ifElse() {
         $Else height < 160 
         LIMIT 10
     """).forEach { println(it.height) }
+}
+
+fun whereIn() {
+    Education.values().forEach { insert(Pal(edu = it)) }
+
+    val ids = listOf(0, 1, 2, 11)
+    select<Pal>(-"id in $ids").forEach { println(it) }
+
+    val eduList = listOf(Education.high, Education.scienceDegree, Education.school)
+    select<Pal>(-"edu in $eduList").forEach { println(it) }
 }
 
 fun json() {

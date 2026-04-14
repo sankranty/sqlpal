@@ -45,6 +45,12 @@ data class PersonJ (
     var edua: Array<Education>
 )
 
+data class Pal (
+    @Id @AutoGen
+    var id: Long? = null,
+    var edu: Education
+    )
+
 data class Person2 (
     @Id @AutoGen
     var id: Long? = null,

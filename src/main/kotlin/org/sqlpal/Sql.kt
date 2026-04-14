@@ -74,12 +74,15 @@ object Sql: Interpolator<Any, Query> {
                 builder.append(params[i]) // inline value of the param directly into the string instead of adding it as a binding parameter.
             }
             // All other values add as a binding parameters.
-            else {
+            else if (!handleInWithCollection(params[i], strings[i], builder, bindParams))
+            {
                 if (params[i] is List<*>) throw SqlInterpolatorException(
                     "Parameters of the List type, specified in the query, must be prefixed with the '-'. " +
                         "Unary minus operator is overloaded by SqlPal and converts List to typed Array." +
                         "It's necessary to handle empty Lists, because unlike Array, empty List does not contain " +
-                        "information about its generic type, what makes impossible to map it to appropriate SQL type.")
+                        "information about its generic type, what makes impossible to map it to appropriate SQL type." +
+                        "The only case when '-' prefix is not required, is when list is specified after IN operator, " +
+                        "as list is unfolded into values in this case.")
                 builder.append('?')
                 bindParams.add(params[i])
             }
@@ -112,5 +115,37 @@ object Sql: Interpolator<Any, Query> {
             i++
         }
         return i
+    }
+
+    private fun handleInWithCollection(value: Any, str: String,
+                                       builder: StringBuilder, bindParams: MutableList<Any?>): Boolean {
+        // Check that value is some kind of collection. Arrays don't have base type, so use isArray.
+        if (!(value is List<*> || value is ListAndType || value::class.java.isArray))
+            return false
+
+        // Check that there is IN operator right before value.
+        if (!finishesWithIN(str))
+            return false
+
+        val items = getItems(if (value is ListAndType) value.list else value)
+
+        builder.append('(')
+        for (item in items.iterator) {
+            builder.append("?,")
+            bindParams.add(item)
+        }
+        if (builder.endsWith(',')) // Check for case of empty collection.
+            builder.deleteCharAt(builder.length - 1) // Remove trailing comma
+        builder.append(')')
+        return true
+    }
+
+    private fun finishesWithIN(str: String): Boolean {
+        var i = str.length
+        while (i > 0)
+            if (!str[--i].isWhitespace()) {
+                return i > 1 && (str[i - 1] == 'I' || str[i - 1] == 'i') && (str[i] == 'N' || str[i] == 'n')
+            }
+        return false
     }
 }

@@ -175,6 +175,24 @@ private fun snake2Camel(name: String): String {
     return sb.toString()
 }
 
+// Allows uniformly process any kind of iterable source regardless of its type (List, Array<*>, ByteArray, etc.).
+internal class Items(val iterator: Iterator<*>, val size: Int, val isTypedArray: Boolean = true)
+
+internal fun getItems(value: Any) =
+    // There is no base class for arrays, but all arrays and lists have iterator, so get it to iterate over array.
+    when (value) {
+        is List<*> -> Items(value.iterator(), value.size, false)
+        is Array<*> -> Items(value.iterator(), value.size, false)
+        is ByteArray -> Items(value.iterator(), value.size)
+        is ShortArray -> Items(value.iterator(), value.size)
+        is IntArray -> Items(value.iterator(), value.size)
+        is LongArray -> Items(value.iterator(), value.size)
+        is FloatArray -> Items(value.iterator(), value.size)
+        is DoubleArray -> Items(value.iterator(), value.size)
+        is BooleanArray -> Items(value.iterator(), value.size)
+        else -> Items((value as CharArray).iterator(), value.size)
+    }
+
 @Suppress("UNCHECKED_CAST")
 internal fun String.toEnum(enumType: KType) =
     java.lang.Enum.valueOf(enumType.jvmErasure.java as Class<out Enum<*>>, this)
