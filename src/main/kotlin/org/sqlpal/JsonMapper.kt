@@ -57,7 +57,7 @@ internal class JsonMapper(
         return list
     }
 
-    private fun getParser(): (String) -> Any = when (componentType) {
+    private fun getParser(): (String) -> Any = when (componentType.classifier) {
         String::class -> { c -> c }
 
         Integer::class -> Integer::parseInt
