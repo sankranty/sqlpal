@@ -11,7 +11,7 @@ Ultralight ORM for Kotlin.
 Add the dependencies:
 ```kotlin
 plugins {
-    // It is used to specify bind parameters directly in the query string.
+    // Used to specify bind parameters directly in the query string.
     id("io.exoquery.terpal-plugin") version "1.8.21-0.1.0"
 }
 
@@ -165,21 +165,51 @@ SqlPal is DBMS agnostic. It works with any database that provides a JDBC driver.
 * UUID
 * Any user-defined type if a mapper is provided. See `SqlPal.addTypeMapper` for details.
 
-### Object naming
+### Smart mapping
+
+#### When reading data
+SqlPal creates an object by calling the primary constructor 
+and automatically mapping columns from the result set to primary constructor parameters. 
+
+SqlPal detects constructor parameters with default values and correctly processes them
+even if the result set does not contain the corresponding columns.
+
+If the result set contains columns that do not match constructor parameters, 
+then SqlPal tries to map them to mutable properties declared in the class body and base classes.
+
 When reading query results, SqlPal automatically converts names of columns regardless of naming convention 
 (first_name, FIRST_NAME, firstname, "First Name" - all will be correctly mapped to the `firstName` property, 
 and property naming can be different as well).
 
-When generating queries, SqlPal uses snake_case for database objects by default, 
-but you can set `SqlPal.convertNamesToSnakeCase` to `false` if names are the same as in code.
+#### When generating queries
+SqlPal uses snake_case for database objects by default, 
+but you can set `SqlPal.convertNamesToSnakeCase` to `false` if names in database are the same as in code.
 
 Also, the `@SqlName` annotation can be used to specify the name explicitly.
 
+### Support for collections and arrays
+
+SqlPal supports lists, arrays and typed arrays (ByteArray, IntArray, etc.) both as object properties 
+and as query parameters.
+
+When `List<>` is specified as a query parameter it must be prefixed with the `-`.
+Unary minus operator is overloaded by SqlPal and extracts the generic type of the `List`.
+It's necessary to handle empty lists, because unlike an array, an empty list does not contain information 
+about its generic type at runtime, which makes it impossible to map an empty list to the appropriate SQL type.
+```kotlin
+    val myHobbies = listOf(Hobby.Art, Hobby.Coding, Hobby.Travelling)
+    var soulmates = select<Person>(-"hobbies = ${-myHobbies} ORDER BY name")
+
+    val noHobbies = emptyList<Hobby>()
+    var busyPeople = select<Person>(-"hobbies = ${-noHobbies} ORDER BY name")
+```
+
 ### Dynamic queries
 
-In all methods that accept a query you can conditionally exclude part of the query
-by `$If $condition` where 'condition' is a boolean variable or value.
-If 'condition' is false, then rest of the content up to the line break is not included in the query:
+In all methods that accept a query, you can form the query dynamically.  
+By `$If $condition` (where `condition` is a boolean variable or value) 
+you can conditionally include or exclude part of the query.
+If `condition` is `false`, then the rest of the content up to the line break is not included in the query:
 ```kotlin
 val activeOnly = true
 read<Person>(-"""
@@ -189,15 +219,14 @@ read<Person>(-"""
         ORDER BY id
         """)
 ```
-To inline something directly into the string (instead of treating it as a bind parameter), use $I$ instead of $.
+
+To inline something directly into the query string (instead of treating it as a bind parameter), use `$I$` instead of `$`.
+```kotlin
+val sortColumn = if (sortByName) "name" else "creation_date"
+read<Person>(-"SELECT * FROM person ORDER BY $I$sortColumn")
+```
 
 ### Select
-
-When reading data, SqlPal creates an object by calling the primary constructor.
-
-Mapping is done by both primary constructor parameters and mutable properties declared in the class body.
-SqlPal detects constructor parameters with default values and correctly processes them 
-even if the result set does not contain the corresponding column.
 
 * `selectById` - select a single entity by ID. The ID column is identified by a property annotated with `@Id`.
 
@@ -252,6 +281,37 @@ then set `SqlPal.storeArraysAs` to the appropriate value.
 
 If the database supports arrays of enums, then SqlPal will store lists and arrays of enums as database arrays of enums.
 If it's not desired, then set `SqlPal.useEnumArrays` to `false`, to store enums as strings.
+
+If you need to read/store some custom type, it can be done by implementing the `ValueMapper` interface.
+If only storing or only reading is necessary, then you can leave the corresponding function (`readValue` or `writeValue`) empty.
+Here is an example of how support for the locationtech `Point` can be easily added:
+```kotlin
+import org.locationtech.jts.geom.Point
+
+// It is recommended to define Mapper as an object to avoid unnecessary creation of class instances on each call.
+object PointMapper : ValueMapper {
+    private val reader = WKBReader()
+    private val writer = WKBWriter()
+
+    // Assumes that the column is wrapped with ST_AsBinary in the SELECT statement.
+    override fun readValue(resultSet: ResultSet, colIndex: Int) = reader.read(resultSet.getBytes(colIndex))
+
+    override fun writeValue(value: Any?, statement: PreparedStatement, paramIndex: Int, componentType: KClass<*>?): Boolean {
+      val bytes = writer.write(value as Point)
+      statement.setBytes(paramIndex, bytes)
+      return true
+    }
+}
+
+// Add the mapper to use it across the app.
+SqlPal.addTypeMapper(Point::class, PointMapper)
+
+// Or annotate particular property if you want to apply mapper only to it.
+class Person (
+    @Mapper(PointMapper::class)
+    val location: Point
+)
+```
 
 ### Performance tuning
 
