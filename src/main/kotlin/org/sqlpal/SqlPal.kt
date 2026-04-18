@@ -4,6 +4,7 @@ import com.zaxxer.hikari.HikariDataSource
 import java.sql.Connection
 import javax.sql.DataSource
 import kotlin.reflect.KClass
+import kotlin.reflect.KType
 
 /** Provides methods to set up SqlPal. */
 object SqlPal
@@ -78,6 +79,7 @@ object SqlPal
     @Volatile
     var storeArraysAs = ArrayStorageType.Array
 
+    internal fun storeAsJson(componentType: KType) = storeAsJson(componentType.kClass == ByteArray::class)
     internal fun storeAsJson(isByteArray: Boolean) =
         storeArraysAs == ArrayStorageType.Json || storeArraysAs == ArrayStorageType.JsonExceptByteArray && !isByteArray
 

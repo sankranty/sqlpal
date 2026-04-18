@@ -7,10 +7,20 @@ import kotlin.reflect.KType
 
 // Provides serialization of Array or Collection to JSON and parsing from it.
 internal class JsonMapper(
-    private val json: String,
     private val colIndex: Int,
-    private val componentType: KType)
+    componentType: KType)
 {
+    private lateinit var json: String
+    private var index: Int = 0
+
+    private val extractItem: () -> String
+    private val parseValue: (String) -> Any
+
+    init {
+        extractItem = if (componentType.isQuotedInJson) ::extractQuotedItem else ::extractUnquotedItem
+        parseValue = getParser(componentType)
+    }
+
     companion object {
         fun serialize(isTypedArray: Boolean, iterator: Iterator<*>, componentType: KClass<*>): String {
             val sb = StringBuilder("[")
@@ -21,7 +31,7 @@ internal class JsonMapper(
             else if (componentType.isQuotedInJson)
                 iterator.forEach {
                     if (it == null) sb.append("null")
-                    else sb.append("\"").append(it).append("\"")
+                    else sb.append('"').append(it).append('"')
                     sb.append(',')
                 }
             else
@@ -33,9 +43,10 @@ internal class JsonMapper(
         }
     }
 
-    private var index: Int = 0
+    fun parse(jsonString: String?): List<*>? {
+        json = jsonString ?: return null
 
-    fun parse(): List<*> {
+        index = 0
         val list = mutableListOf<Any?>()
 
         skipWhitespace()
@@ -43,11 +54,8 @@ internal class JsonMapper(
         skipWhitespace()
         if (json[index] == ']') return list
 
-        val extractItem = if (componentType.isQuotedInJson) ::extractQuotedItem else ::extractUnquotedItem
-        val parse = getParser()
-
         while (true) {
-            val value = if (parseNull()) null else parse(extractItem())
+            val value = if (parseNull()) null else parseValue(extractItem())
             list.add(value)
             skipWhitespace()
             if (json[index] == ']') break
@@ -57,7 +65,7 @@ internal class JsonMapper(
         return list
     }
 
-    private fun getParser(): (String) -> Any = when (componentType.classifier) {
+    private fun getParser(type: KType): (String) -> Any = when (type.classifier) {
         String::class -> { c -> c }
 
         Integer::class -> Integer::parseInt
@@ -78,8 +86,8 @@ internal class JsonMapper(
         OffsetDateTime::class -> OffsetDateTime::parse
         ZonedDateTime::class -> ZonedDateTime::parse
         Instant::class -> Instant::parse
-        else -> if (componentType.isEnum) { c -> c.toEnum(componentType) }
-        else throw SqlPalException("Parsing from JSON for type $componentType is not implemented.")
+        else -> if (type.isEnum) { c -> c.toEnum(type) }
+        else throw SqlPalException("Parsing from JSON for type $type is not implemented.")
     }
 
     private fun parseNull() = if (json.length > index + 3 &&

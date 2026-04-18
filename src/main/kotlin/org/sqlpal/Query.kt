@@ -157,24 +157,27 @@ class Query @PublishedApi internal constructor(
     {
         val isList = type.kClass?.isSubclassOf(List::class) == true
         val isArray = type.kClass?.java?.isArray == true // arrays don't have base type (there are IntArray, ByteArray, etc.), so use isArray prop.
+        val isIterable = isList || isArray
 
         // For List and Array, we need type of its generic.
-        val valueType = if (isList || isArray) type.arguments[0].type!! else type
+        val valueType = if (isIterable) type.arguments[0].type!! else type
 
         val customReader = getCustomReader(type)
 
         val reader = if (customReader != null) { i, _ -> customReader(this, i) }
         else if (type.isEnum) { i, t -> getString(i)?.toEnum(t) }
-        else if (isList)
-            if (SqlPal.storeAsJson(type.kClass == ByteArray::class)) ResultSet::readJsonToList
-            else if (valueType.isEnum) ResultSet::readEnumList
-            else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toList()
-        else if (isArray)
-            if (SqlPal.storeAsJson(type.kClass == ByteArray::class)) { i, t -> readJsonToList(i, t)?.toArrayOfType(valueType) }
-            else if (type.kClass?.java?.componentType?.isEnum == true) ResultSet::readEnumArray
-            else if (type.classifier == ByteArray::class) fun ResultSet.(i, _) = getBytes(i)
-            else fun ResultSet.(i, _) = getArray(i)?.array
-        else when (type.classifier) {
+        else if (isIterable) {
+            val jsonMapper = if (SqlPal.storeAsJson(type)) JsonMapper(colIndex, valueType) else null
+            if (isList)
+                if (jsonMapper != null) { i, _ -> jsonMapper.parse(getString(i)) }
+                else if (valueType.isEnum) ResultSet::readEnumList
+                else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toList()
+            else // It's array
+                if (jsonMapper != null) { i, t -> jsonMapper.parse(getString(i))?.toArrayOfType(t) }
+                else if (type.kClass?.java?.componentType?.isEnum == true) ResultSet::readEnumArray
+                else if (type.classifier == ByteArray::class) fun ResultSet.(i, _) = getBytes(i)
+                else fun ResultSet.(i, _) = getArray(i)?.array
+        } else when (type.classifier) {
             String::class -> { i, _ -> getString(i) }
             Int::class -> valueTypeReader(type, ResultSet::getInt)
             Long::class -> valueTypeReader(type, ResultSet::getLong)
@@ -333,11 +336,6 @@ class Query @PublishedApi internal constructor(
         } else
             statement.setObject(index, array, Types.ARRAY)
     }
-}
-
-private fun ResultSet.readJsonToList(colIndex: Int, componentType: KType): List<*>? {
-    val json = getString(colIndex) ?: return null
-    return JsonMapper(json, colIndex, componentType).parse()
 }
 
 @Suppress("UNCHECKED_CAST")
