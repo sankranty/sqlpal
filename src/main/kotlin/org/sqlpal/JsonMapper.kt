@@ -27,7 +27,7 @@ internal class JsonMapper(
             else
                 iterator.forEach { sb.append(it ?: "null").append(',') }
 
-            sb.deleteCharAt(sb.length - 1) // Remove trailing comma
+            if (sb.length > 1) sb.deleteCharAt(sb.length - 1) // Remove trailing comma
             sb.append(']')
             return sb.toString()
         }
