@@ -17,7 +17,7 @@ plugins {
 }
 
 group = "org.sqlpal"
-version = "1.0.3"
+version = "1.0.4"
 
 repositories {
     mavenCentral()
@@ -60,7 +60,7 @@ publishing {
     publications.withType<MavenPublication>().configureEach {
         pom {
             name.set("SqlPal")
-            description.set("Ultra lightweight ORM for Kotlin.")
+            description.set("Ultralight ORM for Kotlin.")
             url.set("https://github.com/sankranty/sqlpal")
 
             licenses {

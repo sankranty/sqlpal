@@ -16,7 +16,7 @@ plugins {
 }
 
 dependencies {
-    implementation("org.sqlpal:sqlpal:1.0.3")
+    implementation("org.sqlpal:sqlpal:1.0.4")
 }
 ```
 And most of the operations are done in a single line (no need to manually map bind parameters):
@@ -190,7 +190,7 @@ Also, the `@SqlName` annotation can be used to specify the name explicitly.
 ### Support for collections and arrays
 
 SqlPal supports lists, arrays and typed arrays (ByteArray, IntArray, etc.) both as object properties 
-and as query parameters.
+and as query parameters, including support for `enum` values.
 
 When `List<>` is specified as a query parameter it must be prefixed with the `-`.
 Unary minus operator is overloaded by SqlPal and extracts the generic type of the `List`.
@@ -202,6 +202,14 @@ about its generic type at runtime, which makes it impossible to map an empty lis
 
     val noHobbies = emptyList<Hobby>()
     var busyPeople = select<Person>(-"hobbies = ${-noHobbies} ORDER BY name")
+```
+
+SqlPal has embedded support for `IN` operator. When list or array is specified after `IN` it is unfolded into values 
+and each value is placed as a binding parameter, and `IN (?, ?, ?)` is automatically generated.
+Also, in this case `-` prefix for lists is not required:
+```kotlin
+    val ids = listOf(1, 2, 3)
+    var leaders = select<Person>(-"id IN $ids ORDER BY name")
 ```
 
 ### Dynamic queries
@@ -219,7 +227,18 @@ read<Person>(-"""
         ORDER BY id
         """)
 ```
-
+For several mutually exclusive conditions, use `$Else$If` and `$Else` (which also have scope up to the line break):
+```kotlin
+val firstOne = false
+val codersOnly = true
+read<Person>(-"""
+        SELECT * FROM person p WHERE 
+        $If $firstOne id = 0
+        $Else$If $codersOnly any(hobbies) = ${Hobby.Coding}
+        $Else name <> ''
+        ORDER BY id
+        """)
+```
 To inline something directly into the query string (instead of treating it as a bind parameter), use `$I$` instead of `$`.
 ```kotlin
 val sortColumn = if (sortByName) "name" else "creation_date"
