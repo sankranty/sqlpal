@@ -29,7 +29,7 @@ annotation class Id
 annotation class SqlName(val name: String)
 
 /** Provides value mapper for particular property. If you need to set mapping for some type globally,
- * then add it to [Sql.valueMappers] with corresponding [ValueMapper].
+ * then add it to [SqlPal.valueMappers] with corresponding [ValueMapper].
  * @param mapper Specify type of object or class that implements [ValueMapper].
  * If class is specified, then it must have parameterless constructor. */
 @Target(AnnotationTarget.PROPERTY)
