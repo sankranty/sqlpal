@@ -20,14 +20,14 @@ object I
 /** Exception that signals incorrect placement of the specified parameters. */
 class SqlInterpolatorException(message: String) : Exception(message)
 
-/** Wrapper for the [List] that also contains information about generic type of the [List]. */
-class ListAndType (val list: List<*>, val componentType: KClass<*>)
+/** Wrapper for the [Collection] that also contains information about generic type of the [Collection]. */
+class CollectionAndType (val list: Any, val componentType: KClass<*>)
 
-/** Wraps [List] with an object that also contains information about generic type of the [List].
- * It's necessary to handle empty lists, as unlike [Array], empty [List] does not contain
+/** Wraps [Collection] with an object that also contains information about generic type of the [Collection].
+ * It's necessary to handle empty collections, as unlike [Array], empty [Collection] does not contain
  * information about its generic type, what makes impossible to map it to appropriate SQL type. */
 inline operator fun <reified T> List<T>?.unaryMinus() =
-    if (this != null) ListAndType(this, T::class) else null
+    if (this != null) CollectionAndType(this, T::class) else null
 
 /** Allows to use more compact -"..." syntax instead of Sql("...") syntax. */
 @InterpolatorFunction<Sql>(Sql::class)
@@ -120,14 +120,14 @@ object Sql: Interpolator<Any, Query> {
     private fun handleInWithCollection(value: Any, str: String,
                                        builder: StringBuilder, bindParams: MutableList<Any?>): Boolean {
         // Check that value is some kind of collection. Arrays don't have base type, so use isArray.
-        if (!(value is List<*> || value is ListAndType || value::class.java.isArray))
+        if (!(value is List<*> || value is CollectionAndType || value::class.java.isArray))
             return false
 
         // Check that there is IN operator right before value.
         if (!finishesWithIN(str))
             return false
 
-        val items = getItems(if (value is ListAndType) value.list else value)
+        val items = getItems(if (value is CollectionAndType) value.list else value)
 
         builder.append('(')
         for (item in items.iterator) {

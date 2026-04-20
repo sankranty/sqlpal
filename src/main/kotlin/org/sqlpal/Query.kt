@@ -169,14 +169,18 @@ class Query @PublishedApi internal constructor(
         else if (isIterable) {
             val jsonMapper = if (SqlPal.storeAsJson(type)) JsonMapper(colIndex, valueType) else null
             if (isList)
-                if (jsonMapper != null) { i, _ -> jsonMapper.parse(getString(i)) }
+                if (jsonMapper != null) { i, _ -> jsonMapper.parseList(getString(i)) }
                 else if (valueType.isEnum) ResultSet::readEnumList
                 else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toList()
             else // It's array
-                if (jsonMapper != null) { i, t -> jsonMapper.parse(getString(i))?.toArrayOfType(t) }
+                if (jsonMapper != null) { i, t -> jsonMapper.parseList(getString(i))?.toArrayOfType(t) }
                 else if (type.kClass?.java?.componentType?.isEnum == true) ResultSet::readEnumArray
                 else if (type.classifier == ByteArray::class) fun ResultSet.(i, _) = getBytes(i)
                 else fun ResultSet.(i, _) = getArray(i)?.array
+        }
+        else if (type.kClass?.isSubclassOf(Map::class) == true) {
+            val jsonMapper = JsonMapper(colIndex, type.arguments[1].type!!, type.arguments[0].type!!);
+            { i, _ -> jsonMapper.parseMap(getString(i)) }
         } else when (type.classifier) {
             String::class -> { i, _ -> getString(i) }
             Int::class -> valueTypeReader(type, ResultSet::getInt)
@@ -280,7 +284,7 @@ class Query @PublishedApi internal constructor(
                 statement.setObject(index, null)
                 return
             }
-            val (value, componentType) = if (paramValue is ListAndType)
+            val (value, componentType) = if (paramValue is CollectionAndType)
                 paramValue.list to paramValue.componentType
             else
                 paramValue to paramValue::class.java.componentType?.kotlin
@@ -293,6 +297,10 @@ class Query @PublishedApi internal constructor(
                 is ZonedDateTime -> statement.setObject(index, value.toOffsetDateTime())
                 is Instant -> statement.setObject(index, value.atOffset(ZoneOffset.UTC))
                 is Currency -> statement.setString(index, value.toString())
+                is Map<*, *> -> {
+                    val json = JsonMapper.serialize(value, componentType?: throwNotWrapped(index))
+                    statement.setString(index, json)
+                }
                 else -> if (value is List<*> || value::class.java.isArray) // Arrays don't have base type, so use isArray.
                     setArray(statement, index, value, componentType)
                 else
@@ -301,9 +309,12 @@ class Query @PublishedApi internal constructor(
         }
     }
 
+    private fun throwNotWrapped(index: Int): Nothing =
+        throw IllegalArgumentException("Query parameter at index $index is of Collection type " +
+                "but is not wrapped with the CollectionAndType object, what indicates a bug or incorrect use of SqlPal.")
+
     private fun setArray(statement: PreparedStatement, index: Int, value: Any, componentType: KClass<out Any>?) {
-        componentType ?: throw IllegalArgumentException("Query has parameter of type List<*> that is not wrapped " +
-                "with ListAndType object, what indicates a bug or incorrect use of SqlPal.")
+        componentType ?: throwNotWrapped(index)
 
         val items = getItems(value)
 

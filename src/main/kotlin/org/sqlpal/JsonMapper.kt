@@ -8,17 +8,20 @@ import kotlin.reflect.KType
 // Provides serialization of Array or Collection to JSON and parsing from it.
 internal class JsonMapper(
     private val colIndex: Int,
-    componentType: KType)
+    componentType: KType,
+    keyComponentType: KType? = null) // Is used for parsing of Map content.
 {
     private lateinit var json: String
     private var index: Int = 0
 
     private val extractItem: () -> String
     private val parseValue: (String) -> Any
+    private lateinit var parseKey: (String) -> Any
 
     init {
         extractItem = if (componentType.isQuotedInJson) ::extractQuotedItem else ::extractUnquotedItem
         parseValue = getParser(componentType)
+        if (keyComponentType != null) parseKey = getParser(keyComponentType)
     }
 
     companion object {
@@ -41,28 +44,72 @@ internal class JsonMapper(
             sb.append(']')
             return sb.toString()
         }
+
+        fun serialize(map: Map<*, *>, componentType: KClass<*>): String {
+            val needQuotes = componentType.isQuotedInJson // Moved out of loop to speed up.
+            val sb = StringBuilder("{")
+            map.forEach { (key, value) ->
+                sb.append('"').append(key ?: "null").append('"') // Key is always quoted according to JSON format.
+                sb.append(':')
+                if (value == null) sb.append("null")
+                else if (needQuotes) sb.append('"').append(value).append('"')
+                else sb.append(value)
+                sb.append(',')
+            }
+            if (sb.length > 1) sb.deleteCharAt(sb.length - 1) // Remove trailing comma
+            sb.append('}')
+            return sb.toString()
+        }
     }
 
-    fun parse(jsonString: String?): List<*>? {
+    fun parseMap(jsonString: String?): Map<*, *>? {
         json = jsonString ?: return null
 
-        index = 0
-        val list = mutableListOf<Any?>()
+        val map = mutableMapOf<Any?, Any?>()
+        if (!parseStart('{', '}')) return map
 
-        skipWhitespace()
-        if (json[index++] != '[') throwJsonParseError(index - 1)
-        skipWhitespace()
-        if (json[index] == ']') return list
+        while (true) {
+            val keyStr = extractQuotedItem()
+            val key = if (keyStr == "null") null else parseKey(keyStr)
+            skipWhitespace()
+            if (json[index++] != ':') throwJsonParseError(index - 1)
+            skipWhitespace()
+
+            val value = if (parseNull()) null else parseValue(extractItem())
+            map[key] = value
+            if (!parseDelimiter('}')) break
+        }
+        return map
+    }
+
+    fun parseList(jsonString: String?): List<*>? {
+        json = jsonString ?: return null
+
+        val list = mutableListOf<Any?>()
+        if (!parseStart('[', ']')) return list
 
         while (true) {
             val value = if (parseNull()) null else parseValue(extractItem())
             list.add(value)
-            skipWhitespace()
-            if (json[index] == ']') break
-            if (json[index++] != ',') throwJsonParseError(index - 1)
-            skipWhitespace()
+            if (!parseDelimiter(']')) break
         }
         return list
+    }
+
+    private fun parseStart(opening: Char, closing: Char): Boolean {
+        index = 0
+        skipWhitespace()
+        if (json[index++] != opening) throwJsonParseError(index - 1)
+        skipWhitespace()
+        return json[index] != closing
+    }
+
+    private fun parseDelimiter(closing: Char): Boolean {
+        skipWhitespace()
+        if (json[index] == closing) return false
+        if (json[index++] != ',') throwJsonParseError(index - 1)
+        skipWhitespace()
+        return true
     }
 
     private fun getParser(type: KType): (String) -> Any = when (type.classifier) {

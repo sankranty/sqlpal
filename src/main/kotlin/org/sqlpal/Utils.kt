@@ -100,16 +100,18 @@ internal fun addPropToBindParams(entity: Any, p: KProperty<*>, bindParams: Mutab
 }
 
 internal fun addValueToBindParams(value: Any?, classType: KClass<*>, p: KProperty<*>, bindParams: MutableList<Any?>) {
-    val paramValue = if (value is List<*>) {
-        // Wrap List with object that also contains information about generic type of the List.
-        // It's necessary to handle empty Lists, because unlike Array, empty List does not contain
+    val paramValue = if (value is List<*> || value is Map<*, *>) {
+        // Wrap Collection with object that also contains information about generic type of the Collection.
+        // It's necessary to handle empty Collection, because unlike Array, empty Collection does not contain
         // information about its generic type, what makes impossible to map it to appropriate SQL type.
-        val componentType = p.returnType.arguments[0].type?.classifier as? KClass<*>
-            ?: throw SqlPalException("Can't determine generic type of List for " +
-                    "property ${p.name} of ${classType.qualifiedName} class to map it to SQL type. " +
-                    "Only Lists of primitive types are supported " +
-                    "and generic type must be specified explicitly, not List<*>.")
-        ListAndType(value, componentType)
+        val valueArgumentIndex = if (value is Map<*, *>) 1 else 0
+        val componentType = p.returnType.arguments[valueArgumentIndex].type?.classifier as? KClass<*>
+        if (componentType == null || componentType == Any::class)
+            throw SqlPalException("The generic type of '${p.name}' property of '${classType.qualifiedName}' class " +
+                    "is not of primitive type and thus can't be mapped to any SQL type. " +
+                    "Only Collections of primitive types are supported " +
+                    "and generic type must be specified explicitly, not List<*> or Map<Any, Any>.")
+        CollectionAndType(value, componentType)
     } else
         value
     bindParams.add(paramValue)

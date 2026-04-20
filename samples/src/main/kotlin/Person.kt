@@ -42,7 +42,8 @@ data class PersonJ (
     var id: Long? = null,
     var name: String,
     var edu: List<Education>,
-    var edua: Array<Education>
+    var edua: Array<Education>,
+    var relations: Map<Education?, Boolean?>?
 )
 
 data class Pal (

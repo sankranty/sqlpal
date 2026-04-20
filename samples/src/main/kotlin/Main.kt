@@ -92,8 +92,11 @@ fun whereIn() {
 fun json() {
     SqlPal.storeArraysAs = ArrayStorageType.JsonExceptByteArray
 
-    val p = PersonJ(name = "Katerina", edu = listOf(Education.high, Education.middle),
-        edua = arrayOf(Education.high, Education.scienceDegree))
+    val p = PersonJ(name = "Katerina",
+        edu = listOf(Education.high, Education.middle),
+        edua = arrayOf(Education.high, Education.scienceDegree),
+        relations = mapOf(null to false, Education.school to true, Education.high to true, Education.middle to null)
+    )
     insert(p)
 
     update(-"id >= ${44}", PersonJ::name to "Ekaterina")
