@@ -3,6 +3,11 @@ import java.time.LocalDate
 import kotlin.collections.ArrayList
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import org.locationtech.jts.geom.Coordinate
+import org.locationtech.jts.geom.GeometryFactory
+import org.locationtech.jts.geom.Point
+import org.locationtech.jts.io.WKBReader
+import org.locationtech.jts.io.WKBWriter
 import java.sql.PreparedStatement
 import java.sql.ResultSet
 import java.time.Duration
@@ -11,11 +16,14 @@ import kotlin.math.ceil
 import kotlin.math.cos
 import org.sqlpal.*
 import org.sqlpal.query.*
+import kotlin.reflect.KClass
 
 suspend fun main(args: Array<String>)
 {
     val base = if (args.contains("big")) "test_big" else "test"
     SqlPal.setDataSource("jdbc:postgresql://localhost:5431/$base", base, base)
+
+    SqlPal.addTypeMapper(Point::class, PointMapper)
 
     when {
         args.contains("ins") -> ins3()
@@ -26,9 +34,29 @@ suspend fun main(args: Array<String>)
         args.contains("json") -> json()
         args.contains("where-in") -> whereIn()
         args.contains("if-else") -> ifElse()
+        args.contains("point") -> point()
         args.contains("gen") -> insert(args.contains("big"))
         else -> select(args.contains("prep"))
     }
+}
+object PointMapper : ValueMapper {
+    private val reader = WKBReader()
+    private val writer = WKBWriter()
+
+    // Assumes that column is wrapped with ST_AsBinary in SELECT statement.
+    override fun readValue(resultSet: ResultSet, colIndex: Int) = reader.read(resultSet.getBytes(colIndex))
+
+    override fun writeValue(value: Any?, statement: PreparedStatement, paramIndex: Int, componentType: KClass<*>?): Boolean {
+        val bytes = writer.write(value as Point)
+        statement.setBytes(paramIndex, bytes)
+        return true
+    }
+}
+
+fun point() {
+    val location = Location(GeometryFactory().createPoint(Coordinate(30.1, 60.3)))
+    insert(location)
+    read<Location>(-"SELECT id, ST_AsBinary(point) as point FROM location").forEach { println(it) }
 }
 
 fun ifElse() {
@@ -87,6 +115,10 @@ fun whereIn() {
 
     val eduList = listOf(Education.high, Education.scienceDegree, Education.school)
     select<Pal>(-"edu in $eduList").forEach { println(it) }
+
+    println("By full list equality")
+    val edu = listOf(Education.high, Education.middle)
+    select<Person3>(-"edu = ${-edu}").forEach { println(it) }
 }
 
 fun json() {

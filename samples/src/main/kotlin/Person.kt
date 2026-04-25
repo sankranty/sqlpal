@@ -1,4 +1,5 @@
 
+import org.locationtech.jts.geom.Point
 import org.sqlpal.*
 import java.time.LocalDate
 
@@ -30,7 +31,7 @@ data class Person3 (
     @SqlName("\"first-name\"")
     var name: String,
     var num: List<Int>,
-    var num2: Array<Int>,
+    var num2: Array<Int>? = null,
     var edu: Array<Education>,
     var edu2: List<Education>? = emptyList(),
     @SqlIgnore
@@ -51,6 +52,12 @@ data class Pal (
     var id: Long? = null,
     var edu: Education
     )
+
+class Location(
+    var point: Point,
+    @Id @AutoGen
+    var id: Long? = null,
+)
 
 data class Person2 (
     @Id @AutoGen
