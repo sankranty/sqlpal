@@ -209,7 +209,7 @@ class Query @PublishedApi internal constructor(
 
             else -> throw SqlPalException("Property '${param?.name}' of $className class has type '${type.classifier}', " +
                     "for witch mapping to SQL type is not implemented. " +
-                    "To provide mapper for '${type.classifier}' add it to Sql.valueMappers " +
+                    "To provide mapper for '${type.classifier}' use SqlPal.addTypeMapper method " +
                     "to support it across the entire app, or annotate this property with @Mapper annotation."
             )
         }
