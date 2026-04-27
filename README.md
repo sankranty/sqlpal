@@ -21,6 +21,9 @@ dependencies {
 ```
 And most of the operations are done in a single line (no need to manually map bind parameters):
 ```kotlin
+import org.sqlpal.*
+import org.sqlpal.query.*
+
 enum class Hobby { Sports, Art, Travelling, Coding }
 
 class Person(
