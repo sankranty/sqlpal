@@ -34,6 +34,7 @@ data class Person3 (
     var num2: Array<Int>? = null,
     var edu: Array<Education>,
     var edu2: List<Education>? = emptyList(),
+    var edus: Set<Education>? = emptySet(),
     @SqlIgnore
     var gen: Gender = Gender.female
 ) : Base()
@@ -43,6 +44,7 @@ data class PersonJ (
     var id: Long? = null,
     var name: String,
     var edu: List<Education>,
+    var edus: Set<Education>?,
     var edua: Array<Education>,
     var relations: Map<Education?, Boolean?>?
 )

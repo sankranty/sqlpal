@@ -26,7 +26,7 @@ class CollectionAndType (val list: Any, val componentType: KClass<*>)
 /** Wraps [Collection] with an object that also contains information about generic type of the [Collection].
  * It's necessary to handle empty collections, as unlike [Array], empty [Collection] does not contain
  * information about its generic type, what makes impossible to map it to appropriate SQL type. */
-inline operator fun <reified T> List<T>?.unaryMinus() =
+inline operator fun <reified T> Collection<T>?.unaryMinus() =
     if (this != null) CollectionAndType(this, T::class) else null
 
 /** Allows to use more compact -"..." syntax instead of Sql("...") syntax. */
@@ -76,13 +76,13 @@ object Sql: Interpolator<Any, Query> {
             // All other values add as a binding parameters.
             else if (!handleInWithCollection(params[i], strings[i], builder, bindParams))
             {
-                if (params[i] is List<*>) throw SqlInterpolatorException(
-                    "Parameters of the List type, specified in the query, must be prefixed with the '-'. " +
-                        "Unary minus operator is overloaded by SqlPal and converts List to typed Array." +
-                        "It's necessary to handle empty Lists, because unlike Array, empty List does not contain " +
+                if (params[i] is Collection<*>) throw SqlInterpolatorException(
+                    "Parameters of the Collection type, specified in the query, must be prefixed with the '-'. " +
+                        "Unary minus operator is overloaded by SqlPal and converts Collection to typed Array." +
+                        "It's necessary to handle empty Collections, because unlike Array, empty Collection does not contain " +
                         "information about its generic type, what makes impossible to map it to appropriate SQL type." +
-                        "The only case when '-' prefix is not required, is when list is specified after IN operator, " +
-                        "as list is unfolded into values in this case.")
+                        "The only case when '-' prefix is not required, is when collection is specified after IN operator, " +
+                        "as collection is unfolded into values in this case.")
                 builder.append('?')
                 bindParams.add(params[i])
             }
@@ -119,8 +119,8 @@ object Sql: Interpolator<Any, Query> {
 
     private fun handleInWithCollection(value: Any, str: String,
                                        builder: StringBuilder, bindParams: MutableList<Any?>): Boolean {
-        // Check that value is some kind of collection. Arrays don't have base type, so use isArray.
-        if (!(value is List<*> || value is CollectionAndType || value::class.java.isArray))
+        // Check that the value is some kind of collection. Arrays don't have base type, so use isArray.
+        if (!(value is Collection<*> || value is CollectionAndType || value::class.java.isArray))
             return false
 
         // Check that there is IN operator right before value.

@@ -31,6 +31,7 @@ suspend fun main(args: Array<String>)
         args.contains("upd") -> upd3()
         args.contains("find") -> find()
         args.contains("sel") -> sel()
+        args.contains("coll") -> collections()
         args.contains("json") -> json()
         args.contains("where-in") -> whereIn()
         args.contains("if-else") -> ifElse()
@@ -126,6 +127,7 @@ fun json() {
 
     val p = PersonJ(name = "Katerina",
         edu = listOf(Education.high, Education.middle),
+        edus = setOf(Education.high, Education.school),
         edua = arrayOf(Education.high, Education.scienceDegree),
         relations = mapOf(null to false, Education.school to true, Education.high to true, Education.middle to null)
     )
@@ -243,19 +245,27 @@ fun sel() {
     select<Person>(-"id < 20 $If ${false} and gender = ${Gender.female}").forEach { println("Person $it") }
 }
 
-fun sel3() {
-    val educations: List<Education> = mutableListOf(Education.high)
+fun collections() {
+    val p = Person3("Katerina", listOf(1, 4, 8),
+        edu = arrayOf(Education.high, Education.middle),
+        edu2 = listOf(Education.high, Education.scienceDegree),
+        edus = setOf(Education.high, Education.school),
+    )
+    insert(p)
+    select<Person3>(-"edu = ${p.edu} and edu2 = ${-p.edu2} and edus = ${-p.edus}").forEach { println(it) }
+
+    println("Select Person3")
+    var educations: List<Education> = mutableListOf(Education.high)
     val educationsArr = emptyArray<Education>()
     val num = emptyArray<Int>()
     val num2 = emptyList<Int>()
-    //select<Person3>(-"num = $num and num2 = ${-num2}").forEach { println("Person $it") }
-    select<Person3>(-"edu2 = ${-educations}", includeOptional = true).forEach { println("Person $it") }
+    //select<Person3>(-"num = $num and num2 = ${-num2}").forEach { println(it) }
+    select<Person3>(-"edu2 = ${-educations}", includeOptional = true).forEach { println(it) }
 
-    //val educations = emptyList<Education>()
-    //select<Person3>(-"num2 = $num and edu2 = ${-educations}").forEach { println("Person $it") }
-//    class A (val a: Int)
-//    val str = arrayOf("a", "b")
-//    val obj = arrayOf(A(1), A(2))
+    println("Select Person3 with filter by empty list")
+    educations = emptyList()
+    select<Person3>(-"num2 = $num and edu2 = ${-educations}").forEach { println(it) }
+
 }
 
 var selectedRowsCount = arrayOf(0 to 0.0, 0 to 0.0, 0 to 0.0, 0 to 0.0)

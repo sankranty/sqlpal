@@ -156,8 +156,9 @@ class Query @PublishedApi internal constructor(
     private fun createReader(type: KType, colIndex: Int, param: KParameter?, className: String?): Reader
     {
         val isList = type.kClass?.isSubclassOf(List::class) == true
+        val isSet = type.kClass?.isSubclassOf(Set::class) == true
         val isArray = type.kClass?.java?.isArray == true // arrays don't have base type (there are IntArray, ByteArray, etc.), so use isArray prop.
-        val isIterable = isList || isArray
+        val isIterable = isList || isSet || isArray
 
         // For List and Array, we need type of its generic.
         val valueType = if (isIterable) type.arguments[0].type!! else type
@@ -172,6 +173,10 @@ class Query @PublishedApi internal constructor(
                 if (jsonMapper != null) { i, _ -> jsonMapper.parseList(getString(i)) }
                 else if (valueType.isEnum) ResultSet::readEnumList
                 else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toList()
+            else if (isSet)
+                if (jsonMapper != null) { i, _ -> jsonMapper.parseSet(getString(i)) }
+                else if (valueType.isEnum) ResultSet::readEnumSet
+                else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toSet()
             else // It's array
                 if (jsonMapper != null) { i, t -> jsonMapper.parseList(getString(i))?.toArrayOfType(t) }
                 else if (type.kClass?.java?.componentType?.isEnum == true) ResultSet::readEnumArray
@@ -301,7 +306,7 @@ class Query @PublishedApi internal constructor(
                     val json = JsonMapper.serialize(value, componentType?: throwNotWrapped(index))
                     statement.setString(index, json)
                 }
-                else -> if (value is List<*> || value::class.java.isArray) // Arrays don't have base type, so use isArray.
+                else -> if (value is Collection<*> || value::class.java.isArray) // Arrays don't have base type, so use isArray.
                     setArray(statement, index, value, componentType)
                 else
                     statement.setObject(index, value) // Other primitive types are directly supported by JDBC.
@@ -328,10 +333,10 @@ class Query @PublishedApi internal constructor(
         else if (componentType.java.isEnum)
             setEnumArray(statement, index, items, componentType)
         else {
-            // JDBC supports arrays but not lists, so if it's List, then convert it to Array.
+            // JDBC supports arrays but not collections, so if it's a Collection, then convert it to Array.
             // Array must be of certain type, not array of Any, otherwise database driver would not be able
             // to figure out to what SQL type map it to. So create it via reflection to explicitly specify type.
-            val array = if (value is List<*>) value.toArrayOfType(componentType) else value
+            val array = if (value is Collection<*>) value.toArrayOfType(componentType) else value
             statement.setObject(index, array, Types.ARRAY)
         }
     }
@@ -372,13 +377,24 @@ private fun ResultSet.readEnumList(colIndex: Int, enumType: KType): List<Enum<*>
     return arr.map { it.toEnum(enumType) }
 }
 
-private fun List<*>.toArrayOfType(componentType: KType) = componentType.kClass?.let { toArrayOfType(it) }
 @Suppress("UNCHECKED_CAST")
-private fun List<*>.toArrayOfType(componentType: KClass<*>): Array<Any?> {
+private fun ResultSet.readEnumSet(colIndex: Int, enumType: KType): Set<Enum<*>>?
+{
+    val sqlArr = getArray(colIndex) ?: return null
+    val arr = sqlArr.array as Array<String>
+    val set = mutableSetOf<Enum<*>>()
+    arr.forEach { set.add(it.toEnum(enumType)) }
+    return set
+}
+
+private fun Collection<*>.toArrayOfType(componentType: KType) = componentType.kClass?.let { toArrayOfType(it) }
+@Suppress("UNCHECKED_CAST")
+private fun Collection<*>.toArrayOfType(componentType: KClass<*>): Array<Any?> {
     // Using reflection to create array of specified type,
     // as using List.toTypedArray will produce Array<Any> due to generic type erasure.
     val array = (java.lang.reflect.Array.newInstance(componentType.java, size) as Array<Any?>)
-    for (i in indices) array[i] = this[i]
+    var i = 0
+    for (item in this) array[i++] = item
     return array
 }
 

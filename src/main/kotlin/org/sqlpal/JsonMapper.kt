@@ -62,38 +62,46 @@ internal class JsonMapper(
         }
     }
 
-    fun parseMap(jsonString: String?): Map<*, *>? {
-        json = jsonString ?: return null
+    fun parseList(jsonString: String?) = parse(jsonString, '[', ']',
+        { mutableListOf<Any?>() },
+        { list, value, _ -> list.add(value) }
+    )
 
-        val map = mutableMapOf<Any?, Any?>()
-        if (!parseStart('{', '}')) return map
+    fun parseSet(jsonString: String?) = parse(jsonString, '[', ']',
+        { mutableSetOf<Any?>() },
+        { set, value, _ -> set.add(value) }
+    )
 
-        while (true) {
+    fun parseMap(jsonString: String?) = parse(jsonString, '{', '}',
+        { mutableMapOf<Any?, Any?>() },
+        { map, value, key -> map[key] = value },
+        {
             val keyStr = extractQuotedItem()
             val key = if (keyStr == "null") null else parseKey(keyStr)
             skipWhitespace()
             if (json[index++] != ':') throwJsonParseError(index - 1)
             skipWhitespace()
-
-            val value = if (parseNull()) null else parseValue(extractItem())
-            map[key] = value
-            if (!parseDelimiter('}')) break
+            key
         }
-        return map
-    }
+    )
 
-    fun parseList(jsonString: String?): List<*>? {
+    private inline fun <T> parse(jsonString: String?, opening: Char, closing: Char,
+                                 createContainer: () -> T,
+                                 addValue: (T, Any?, Any?) -> Unit,
+                                 getKey: () -> Any? = { null }
+    ): T? {
         json = jsonString ?: return null
 
-        val list = mutableListOf<Any?>()
-        if (!parseStart('[', ']')) return list
+        val container = createContainer()
+        if (!parseStart(opening, closing)) return container
 
         while (true) {
+            val key = getKey()
             val value = if (parseNull()) null else parseValue(extractItem())
-            list.add(value)
-            if (!parseDelimiter(']')) break
+            addValue(container, value, key)
+            if (!parseDelimiter(closing)) break
         }
-        return list
+        return container
     }
 
     private fun parseStart(opening: Char, closing: Char): Boolean {
@@ -179,7 +187,7 @@ internal class JsonMapper(
 
     private fun throwJsonParseError(position: Int): Nothing = throw SqlPalException(
         "Incorrect format of JSON array at position $position in column at index $colIndex. " +
-                "Unable to convert JSON string to List or Array.")
+                "Unable to convert JSON string to Collection or Array.")
 }
 
 private val KType.isQuotedInJson get() = kClass?.isQuotedInJson == true

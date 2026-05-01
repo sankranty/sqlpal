@@ -100,12 +100,12 @@ internal fun addPropToBindParams(entity: Any, p: KProperty<*>, bindParams: Mutab
 }
 
 internal fun addValueToBindParams(value: Any?, classType: KClass<*>, p: KProperty<*>, bindParams: MutableList<Any?>) {
-    val paramValue = if (value is List<*> || value is Map<*, *>) {
+    val paramValue = if (value is Collection<*> || value is Map<*, *>) {
         // Wrap Collection with object that also contains information about generic type of the Collection.
         // It's necessary to handle empty Collection, because unlike Array, empty Collection does not contain
         // information about its generic type, what makes impossible to map it to appropriate SQL type.
-        val valueArgumentIndex = if (value is Map<*, *>) 1 else 0
-        val componentType = p.returnType.arguments[valueArgumentIndex].type?.classifier as? KClass<*>
+        val indexOfComponentTypeArgument = if (value is Map<*, *>) 1 else 0
+        val componentType = p.returnType.arguments[indexOfComponentTypeArgument].type?.classifier as? KClass<*>
         if (componentType == null || componentType == Any::class)
             throw SqlPalException("The generic type of '${p.name}' property of '${classType.qualifiedName}' class " +
                     "is not of primitive type and thus can't be mapped to any SQL type. " +
@@ -181,9 +181,9 @@ private fun snake2Camel(name: String): String {
 internal class Items(val iterator: Iterator<*>, val size: Int, val isTypedArray: Boolean = true)
 
 internal fun getItems(value: Any) =
-    // There is no base class for arrays, but all arrays and lists have iterator, so get it to iterate over array.
+    // There is no base class for arrays, but all arrays and collections have iterator, so get it to iterate over array.
     when (value) {
-        is List<*> -> Items(value.iterator(), value.size, false)
+        is Collection<*> -> Items(value.iterator(), value.size, false)
         is Array<*> -> Items(value.iterator(), value.size, false)
         is ByteArray -> Items(value.iterator(), value.size)
         is ShortArray -> Items(value.iterator(), value.size)
