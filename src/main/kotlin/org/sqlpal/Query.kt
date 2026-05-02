@@ -392,7 +392,10 @@ private fun Collection<*>.toArrayOfType(componentType: KType) = componentType.kC
 private fun Collection<*>.toArrayOfType(componentType: KClass<*>): Array<Any?> {
     // Using reflection to create array of specified type,
     // as using List.toTypedArray will produce Array<Any> due to generic type erasure.
-    val array = (java.lang.reflect.Array.newInstance(componentType.java, size) as Array<Any?>)
+    // Using componentType.javaObjectType because in case of primitive types
+    // componentType.java will produce typed arrays (IntArray, CharArray, etc.)
+    // which don't have base class and so don't allow to iterate over them with single code.
+    val array = (java.lang.reflect.Array.newInstance(componentType.javaObjectType, size) as Array<Any?>)
     var i = 0
     for (item in this) array[i++] = item
     return array
