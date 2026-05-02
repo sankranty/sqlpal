@@ -160,16 +160,19 @@ internal class JsonMapper(
             index++
             index = json.indexOf('"', index)
             if (index < 0) throwJsonParseError( startIndex)
-        } while (json[index - 1] == '\\') // If it's escaped quote, the search further.
+        } while (json[index - 1] == '\\') // If it's escaped quote, then search further.
 
         index++ // Move index to next char after closing quote.
         return json.substring(startIndex, index - 1)
     }
 
+    // For unquoted items we need to check for both ',' and ']' as there is no ',' after last item.
+    private val unquotedItemDelimiters = charArrayOf(',', ']')
+
     private fun extractUnquotedItem(): String {
         val startIndex = index
 
-        index = json.indexOf(',', index)
+        index = json.indexOfAny(unquotedItemDelimiters, index)
         if (index < 0) throwJsonParseError(startIndex)
         while (json[--index].isWhitespace()) Unit
 
