@@ -287,7 +287,7 @@ class Query @PublishedApi internal constructor(
 
             if (paramValue == null) {
                 statement.setObject(index, null)
-                return
+                continue
             }
             val (value, componentType) = if (paramValue is CollectionAndType)
                 paramValue.list to paramValue.componentType
@@ -295,7 +295,7 @@ class Query @PublishedApi internal constructor(
                 paramValue to paramValue::class.java.componentType?.kotlin
 
             if (SqlPal.valueMappers[value::class]?.writeValue(value, statement, index, componentType) == true)
-                return
+                continue
 
             when (value) {
                 is Enum<*> -> statement.setObject(index, value, Types.OTHER)
