@@ -199,6 +199,15 @@ internal fun getItems(value: Any) =
 internal fun String.toEnum(enumType: KType) =
     java.lang.Enum.valueOf(enumType.jvmErasure.java as Class<out Enum<*>>, this)
 
+internal val KType.componentType get() =
+    // Due to Kotlin bug https://github.com/Kotlin/dataframe/issues/678
+    // KType.classifier returns IntArray for Array<Int> (similarly for other primitive types).
+    // Thus, componentType obtained from it, will be also incorrect (int instead of Integer).
+    // So distinguish Array<*> from unboxed arrays by not empty generic arguments, and if so,
+    // then get type of component via javaObjectType that will return boxed version of component type.
+    // Otherwise, it's unboxed array, so componentType will return correct value anyway.
+    kClass?.java?.componentType?.let { if (arguments.isNotEmpty()) it.kotlin.javaObjectType else it }
+
 internal val KType.isEnum get() = kClass?.java?.isEnum == true
 
 internal val KType.kClass get() = classifier as? KClass<*>

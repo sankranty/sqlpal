@@ -160,8 +160,13 @@ class Query @PublishedApi internal constructor(
         val isArray = type.kClass?.java?.isArray == true // arrays don't have base type (there are IntArray, ByteArray, etc.), so use isArray prop.
         val isIterable = isList || isSet || isArray
 
-        // For List and Array, we need type of its generic.
-        val valueType = if (isIterable) type.arguments[0].type!! else type
+        // For Collection and Array, we need type of its generic.
+        val valueType = if (isIterable)
+            // For unboxed arrays (e.g. IntArray) type does not have arguments,
+            // in this case obtain type of elements via componentType property.
+            if (type.arguments.isNotEmpty()) type.arguments[0].type!!
+            else type.kClass!!.java.componentType.kotlin.createType()
+        else type
 
         val customReader = getCustomReader(type)
 
@@ -178,10 +183,14 @@ class Query @PublishedApi internal constructor(
                 else if (valueType.isEnum) ResultSet::readEnumSet
                 else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toSet()
             else // It's array
-                if (jsonMapper != null) { i, t -> jsonMapper.parseList(getString(i))?.toArrayOfType(t) }
-                else if (type.kClass?.java?.componentType?.isEnum == true) ResultSet::readEnumArray
+                if (jsonMapper != null) { i, _ -> jsonMapper.parseList(getString(i))?.toArrayOfType(type) }
+                else if (valueType.isEnum) ResultSet::readEnumArray
                 else if (type.classifier == ByteArray::class) fun ResultSet.(i, _) = getBytes(i)
-                else fun ResultSet.(i, _) = getArray(i)?.array
+                // Due to Kotlin bug https://github.com/Kotlin/dataframe/issues/678
+                // type.classifier returns IntArray for Array<Int> (similarly for other primitive types),
+                // so distinguish Array<*> from unboxed arrays by not empty generic arguments.
+                else if (type.arguments.isNotEmpty()) fun ResultSet.(i, _) = getArray(i)?.array
+                else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toArrayOfType(type)
         }
         else if (type.kClass?.isSubclassOf(Map::class) == true) {
             val jsonMapper = JsonMapper(colIndex, type.arguments[1].type!!, type.arguments[0].type!!);
@@ -387,17 +396,19 @@ private fun ResultSet.readEnumSet(colIndex: Int, enumType: KType): Set<Enum<*>>?
     return set
 }
 
-private fun Collection<*>.toArrayOfType(componentType: KType) = componentType.kClass?.let { toArrayOfType(it) }
-@Suppress("UNCHECKED_CAST")
-private fun Collection<*>.toArrayOfType(componentType: KClass<*>): Array<Any?> {
+private fun Array<*>.toArrayOfType(type: KType) = iterator().toArrayOfType(type.componentType!!, size)
+
+private fun Collection<*>.toArrayOfType(type: KType) = iterator().toArrayOfType(type.componentType!!, size)
+
+private fun Collection<*>.toArrayOfType(componentType: KClass<*>) = iterator().toArrayOfType(componentType.java, size)
+
+private fun Iterator<*>.toArrayOfType(componentType: Class<*>, size: Int, ): Any {
     // Using reflection to create array of specified type,
-    // as using List.toTypedArray will produce Array<Any> due to generic type erasure.
-    // Using componentType.javaObjectType because in case of primitive types
-    // componentType.java will produce typed arrays (IntArray, CharArray, etc.)
-    // which don't have base class and so don't allow to iterate over them with single code.
-    val array = (java.lang.reflect.Array.newInstance(componentType.javaObjectType, size) as Array<Any?>)
+    // as using Collection.toTypedArray will produce Array<Any> due to generic type erasure.
+    val array = java.lang.reflect.Array.newInstance(componentType, size)
     var i = 0
-    for (item in this) array[i++] = item
+    // Unboxed arrays (e.g. IntArray) don't have a base type, so using Array.set to set values.
+    forEach { java.lang.reflect.Array.set(array, i++, it) }
     return array
 }
 
