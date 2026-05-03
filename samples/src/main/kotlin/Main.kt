@@ -126,6 +126,8 @@ fun json() {
     SqlPal.storeArraysAs = ArrayStorageType.JsonExceptByteArray
 
     val p = PersonJ(name = "Katerina",
+        num = arrayOf(12, 11, 27),
+        numArr = IntArray(4) { it * 3 },
         edu = listOf(Education.high, Education.middle),
         edus = setOf(Education.high, Education.school),
         edua = arrayOf(Education.high, Education.scienceDegree),
@@ -247,12 +249,18 @@ fun sel() {
 
 fun collections() {
     val p = Person3("Katerina", listOf(1, 4, 8),
+        num2 = arrayOf(10, 20, 30),
+        numArr = IntArray(4) { it * 3 },
         edu = arrayOf(Education.high, Education.middle),
         edu2 = listOf(Education.high, Education.scienceDegree),
         edus = setOf(Education.high, Education.school),
     )
     insert(p)
-    select<Person3>(-"edu = ${p.edu} and edu2 = ${-p.edu2} and edus = ${-p.edus}").forEach { println(it) }
+    select<Person3>(-"""
+        edu = ${p.edu} and edu2 = ${-p.edu2} and edus = ${-p.edus} 
+        and num2 = ${p.num2} and num_arr = ${p.numArr}
+        """).forEach { println(it) }
+    //select<Person3>(-"edu = ${p.edu} and edu2 = ${-p.edu2} and edus = ${-p.edus}").forEach { println(it) }
 
     println("Select Person3")
     var educations: List<Education> = mutableListOf(Education.high)

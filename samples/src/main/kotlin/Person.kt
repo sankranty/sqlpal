@@ -32,6 +32,7 @@ data class Person3 (
     var name: String,
     var num: List<Int>,
     var num2: Array<Int>? = null,
+    var numArr: IntArray? = null,
     var edu: Array<Education>,
     var edu2: List<Education>? = emptyList(),
     var edus: Set<Education>? = emptySet(),
@@ -43,6 +44,8 @@ data class PersonJ (
     @Id @AutoGen
     var id: Long? = null,
     var name: String,
+    var num: Array<Int>? = null,
+    var numArr: IntArray? = null,
     var edu: List<Education>,
     var edus: Set<Education>?,
     var edua: Array<Education>,
