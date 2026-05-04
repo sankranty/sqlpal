@@ -38,17 +38,20 @@ annotation class Mapper(val mapper: KClass<out ValueMapper>)
 /** Provides methods to read and write value instead of SqlPal standard processing,
  * or for type that is not supported by SqlPal itself. */
 interface ValueMapper {
-    /** Method is called on SELECT queries for each value in corresponding column.
-     * Read value from [resultSet] using one of its getXXX methods, passing [colIndex] to it,
-     * and then process obtained value to create value of desired type.
+    /** Method is called for each value of the corresponding column in the query [ResultSet].
+     * Read value from the [resultSet] using one of its getXXX methods, passing [colIndex] to it,
+     * and then process obtained value to create value of the desired type.
      * Don't call getXXX method with index other than [colIndex], as it may affect reading data from other columns.
-     * To check if value is null call [ResultSet.wasNull] after call to getXXX method. */
+     * To check if value is null call [ResultSet.wasNull] after call to the getXXX method. */
     fun readValue(resultSet: ResultSet, colIndex: Int): Any?
 
-    /** Method is called on DML queries and can be called on SELECT query if there is binding parameter of
-     * Set value using one of setXXX methods of [PreparedStatement] passing [paramIndex] to it.
+    /** Method is called on DML queries or SELECT query with binding parameter of
+     * Use one of setXXX methods of the [statement] passing [paramIndex] and processed [value] to it.
      * Don't call setXXX method with index other than [paramIndex], as it will affect setting of other parameters.
-     * @param componentType type of component (generic type) for [List] or [Array].
+     * @param value to be set for the query parameter at index [paramIndex].
+     * @param statement prepared statement for the query.
+     * @param paramIndex index of the parameter in the query (starts from 1).
+     * @param componentType type of elements in case of [Collection] or [Array].
      * @return - true - to indicate that value is written and no further processing for it is necessary.
      * - false - to perform standard processing for this value. */
     fun writeValue(value: Any?, statement: PreparedStatement, paramIndex: Int, componentType: KClass<*>?): Boolean
