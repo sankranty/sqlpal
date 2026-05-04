@@ -155,47 +155,12 @@ class Query @PublishedApi internal constructor(
 
     private fun createReader(type: KType, colIndex: Int, param: KParameter?, className: String?): Reader
     {
-        val isList = type.kClass?.isSubclassOf(List::class) == true
-        val isSet = type.kClass?.isSubclassOf(Set::class) == true
-        val isArray = type.kClass?.java?.isArray == true // arrays don't have base type (there are IntArray, ByteArray, etc.), so use isArray prop.
-        val isIterable = isList || isSet || isArray
-
-        // For Collection and Array, we need type of its generic.
-        val valueType = if (isIterable)
-            // For unboxed arrays (e.g. IntArray) type does not have arguments,
-            // in this case obtain type of elements via componentType property.
-            if (type.arguments.isNotEmpty()) type.arguments[0].type!!
-            else type.kClass!!.java.componentType.kotlin.createType()
-        else type
-
+        var valueType = type
         val customReader = getCustomReader(type)
 
         val reader = if (customReader != null) { i, _ -> customReader(this, i) }
         else if (type.isEnum) { i, t -> getString(i)?.toEnum(t) }
-        else if (isIterable) {
-            val jsonMapper = if (SqlPal.storeAsJson(type)) JsonMapper(colIndex, valueType) else null
-            if (isList)
-                if (jsonMapper != null) { i, _ -> jsonMapper.parseList(getString(i)) }
-                else if (valueType.isEnum) ResultSet::readEnumList
-                else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toList()
-            else if (isSet)
-                if (jsonMapper != null) { i, _ -> jsonMapper.parseSet(getString(i)) }
-                else if (valueType.isEnum) ResultSet::readEnumSet
-                else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toSet()
-            else // It's array
-                if (jsonMapper != null) { i, _ -> jsonMapper.parseList(getString(i))?.toArrayOfType(type) }
-                else if (valueType.isEnum) ResultSet::readEnumArray
-                else if (type.classifier == ByteArray::class) fun ResultSet.(i, _) = getBytes(i)
-                // Due to Kotlin bug https://github.com/Kotlin/dataframe/issues/678
-                // type.classifier returns IntArray for Array<Int> (similarly for other primitive types),
-                // so distinguish Array<*> from unboxed arrays by not empty generic arguments.
-                else if (type.arguments.isNotEmpty()) fun ResultSet.(i, _) = getArray(i)?.array
-                else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toArrayOfType(type)
-        }
-        else if (type.kClass?.isSubclassOf(Map::class) == true) {
-            val jsonMapper = JsonMapper(colIndex, type.arguments[1].type!!, type.arguments[0].type!!);
-            { i, _ -> jsonMapper.parseMap(getString(i)) }
-        } else when (type.classifier) {
+        else when (type.classifier) {
             String::class -> { i, _ -> getString(i) }
             Int::class -> valueTypeReader(type, ResultSet::getInt)
             Long::class -> valueTypeReader(type, ResultSet::getLong)
@@ -221,11 +186,47 @@ class Query @PublishedApi internal constructor(
             SQLXML::class -> { i, _ -> getSQLXML(i) }
             UUID::class -> { i, _ -> getObject(i) } // Not guaranteed for all DB, but supported at least by Postgres.
 
-            else -> throw SqlPalException("Property '${param?.name}' of $className class has type '${type.classifier}', " +
-                    "for witch mapping to SQL type is not implemented. " +
-                    "To provide mapper for '${type.classifier}' use SqlPal.addTypeMapper method " +
-                    "to support it across the entire app, or annotate this property with @Mapper annotation."
-            )
+            else -> { // Handle collections and arrays
+                val isList = type.kClass?.isSubclassOf(List::class) == true
+                val isSet = type.kClass?.isSubclassOf(Set::class) == true
+                val isArray = type.kClass?.java?.isArray == true // arrays don't have base type (there are IntArray, ByteArray, etc.), so use isArray prop.
+
+                if (isList || isSet || isArray) {
+                    // For collection or array, get type of its elements.
+                    // Type of unboxed array (e.g. IntArray) does not have generic arguments,
+                    // in this case obtain type of elements via componentType property.
+                    valueType = if (type.arguments.isNotEmpty()) type.arguments[0].type!!
+                    else type.kClass!!.java.componentType.kotlin.createType()
+
+                    val jsonMapper = if (SqlPal.storeAsJson(type)) JsonMapper(colIndex, valueType) else null
+                    if (isList)
+                        if (jsonMapper != null) { i, _ -> jsonMapper.parseList(getString(i)) }
+                        else if (valueType.isEnum) ResultSet::readEnumList
+                        else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toList()
+                    else if (isSet)
+                        if (jsonMapper != null) { i, _ -> jsonMapper.parseSet(getString(i)) }
+                        else if (valueType.isEnum) ResultSet::readEnumSet
+                        else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toSet()
+                    else // It's array
+                        if (jsonMapper != null) { i, _ -> jsonMapper.parseList(getString(i))?.toArrayOfType(type) }
+                        else if (valueType.isEnum) ResultSet::readEnumArray
+                        else if (type.classifier == ByteArray::class) { i, _ -> getBytes(i) }
+                        // Due to Kotlin bug https://github.com/Kotlin/dataframe/issues/678
+                        // type.classifier returns IntArray for Array<Int> (similarly for other primitive types),
+                        // so distinguish Array<*> from unboxed arrays by not empty generic arguments.
+                        else if (type.arguments.isNotEmpty()) fun ResultSet.(i, _) = getArray(i)?.array
+                        else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toArrayOfType(type)
+                }
+                else if (type.kClass?.isSubclassOf(Map::class) == true) {
+                    val jsonMapper = JsonMapper(colIndex, type.arguments[1].type!!, type.arguments[0].type!!);
+                    { i, _ -> jsonMapper.parseMap(getString(i)) }
+                }
+                else throw SqlPalException("Property '${param?.name}' of $className class has type '${type.classifier}', " +
+                        "for witch mapping to SQL type is not implemented. " +
+                        "To provide mapper for '${type.classifier}' use SqlPal.addTypeMapper method " +
+                        "to support it across the entire app, or annotate this property with @Mapper annotation."
+                )
+            }
         }
         return Reader(reader, colIndex, valueType, param)
     }
@@ -402,7 +403,7 @@ private fun Collection<*>.toArrayOfType(type: KType) = iterator().toArrayOfType(
 
 private fun Collection<*>.toArrayOfType(componentType: KClass<*>) = iterator().toArrayOfType(componentType.java, size)
 
-private fun Iterator<*>.toArrayOfType(componentType: Class<*>, size: Int, ): Any {
+private fun Iterator<*>.toArrayOfType(componentType: Class<*>, size: Int): Any {
     // Using reflection to create array of specified type,
     // as using Collection.toTypedArray will produce Array<Any> due to generic type erasure.
     val array = java.lang.reflect.Array.newInstance(componentType, size)
