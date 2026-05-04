@@ -347,7 +347,9 @@ class Query @PublishedApi internal constructor(
             // Array must be of certain type, not array of Any, otherwise database driver would not be able
             // to figure out to what SQL type map it to. So create it via reflection to explicitly specify type.
             val array = if (value is Collection<*>) value.toArrayOfType(componentType) else value
-            statement.setObject(index, array, Types.ARRAY)
+            // Don't specify Types.ARRAY for the setObject, as if it's a ByteArray,
+            // then it should be stored as a binary object, not as an array.
+            statement.setObject(index, array)
         }
     }
 
