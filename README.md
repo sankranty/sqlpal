@@ -16,7 +16,7 @@ plugins {
 }
 
 dependencies {
-    implementation("org.sqlpal:sqlpal:1.0.4")
+    implementation("org.sqlpal:sqlpal:1.0.5")
 }
 ```
 And most of the operations are done in a single line (no need to manually map bind parameters):
@@ -64,7 +64,7 @@ fun main() {
     // Do something in a transaction
     transaction {
         p = selectOne<Person>(-"name = 'Mike'", it)
-        // Do some stuff
+        // ...doing some stuff with person object
         update(p, it) // entity is identified by property annotated with @Id
         delete(p, it)
     }
@@ -82,8 +82,8 @@ Because none of the numerous ORMs is at the same time laconic, fast and flexible
 It's JPQL/HQL in JPA/Hibernate, Kotlin Exposed, JOOQ and QueryDSL.
 While this approach provides strong typing, it has a number of drawbacks:
   * DSL does not provide all features of native SQL. 
-For instance, JOOQ or QueryDSL do not directly support the `STD_Within` spatial function
-(which provides effective search within a given radius, using a spatial index), 
+For instance, JOOQ or QueryDSL do not directly support the `ST_DWithin` spatial function
+(which provides efficient search within a given radius using a spatial index), 
 or the `<->` operator (which allows getting the nearest locations very fast). 
   * Not all DSLs are as expressive as SQL - e.g., `id >= 10 and created <= '01.01.1990'` 
 is much clearer than `Person.id.gte(10).and(Person.created.loe("01.01.1990"))`
@@ -96,16 +96,16 @@ This is provided by most ORMs, including Spring Data JPA/JDBC, Kapper, MyBatis. 
 
 * **Query construction.** 
 It allows you to conditionally construct a query. It's provided, for example, by JPA Specification. Drawbacks:
-  * Too wordy - code is very hard to read and maintain.
+  * Too verbose - code is very hard to read and maintain.
   * Additional performance overhead for query construction.
 
 * **Entity manager for DML operations.** 
 It's standard for JPA. The drawbacks are:
   * Lack of flexibility as operations are fully controlled by the manager.
   * Additional performance overhead due to state management 
-while it's generally not needed in microservice architecture.
+while it's generally not needed in a microservice architecture.
 
-SqlPal is an effort to combine the three objectives, specified above, to deal with the mentioned problems.
+SqlPal aims to combine the three objectives, specified above, to address the described problems.
 
 ## General idea
 SQL is an expressive language, and modern IDEs provide syntax highlighting and code completion
@@ -116,7 +116,7 @@ For this purpose, SqlPal uses standard Kotlin string interpolation
 and the [Terpal](https://github.com/ExoQuery/Terpal) plugin. 
 When you write `-"SELECT * FROM person WHERE id = $id"` (note unary minus before the string) 
 it is compiled into an object that contains the query string and bind parameters from provided values, 
-so SqlPal just executes it, thus there is no runtime overhead for query construction 
+so SqlPal just executes it. Thus, there is no runtime overhead for query construction 
 and no need to manually specify bind parameters.
 
 Also, SqlPal provides methods to perform most of the routine tasks with a single line, like in JPA.
@@ -163,8 +163,9 @@ SqlPal is DBMS agnostic. It works with any database that provides a JDBC driver.
 * BigDecimal and Currency
 * Enums (are converted to varchar if the database does not support enums)
 * Blob, Clob and SQLXML
-* List, Array and typed arrays, e.g. IntArray. They can be stored as database arrays if the database supports arrays, or as JSON.
+* List, Set, Array and unboxed arrays (e.g. IntArray). All can be stored as database arrays if the database supports arrays, or as JSON.
 * ByteArray (mapped to BLOB)
+* Map (stored as JSON string)
 * UUID
 * Any user-defined type if a mapper is provided. See `SqlPal.addTypeMapper` for details.
 
@@ -192,12 +193,12 @@ Also, the `@SqlName` annotation can be used to specify the name explicitly.
 
 ### Support for collections and arrays
 
-SqlPal supports lists, arrays and typed arrays (ByteArray, IntArray, etc.) both as object properties 
+SqlPal supports lists, sets, arrays and unboxed arrays (ByteArray, IntArray, etc.) both as object properties 
 and as query parameters, including support for `enum` values.
 
-When `List<>` is specified as a query parameter it must be prefixed with the `-`.
-Unary minus operator is overloaded by SqlPal and extracts the generic type of the `List`.
-It's necessary to handle empty lists, because unlike an array, an empty list does not contain information 
+When `List<>` or `Set<>` is specified as a query parameter it must be prefixed with the `-`.
+Unary minus operator is overloaded by SqlPal and extracts the generic type of the collection.
+It's necessary to handle empty collections, because unlike an array, an empty collection does not contain information 
 about its generic type at runtime, which makes it impossible to map an empty list to the appropriate SQL type.
 ```kotlin
     val myHobbies = listOf(Hobby.Art, Hobby.Coding, Hobby.Travelling)
@@ -207,13 +208,23 @@ about its generic type at runtime, which makes it impossible to map an empty lis
     var busyPeople = select<Person>(-"hobbies = ${-noHobbies} ORDER BY name")
 ```
 
-SqlPal has embedded support for `IN` operator. When list or array is specified after `IN` it is unfolded into values 
+SqlPal has embedded support for `IN` operator. When list, set or array is specified after `IN` it is unfolded into values 
 and each value is placed as a binding parameter, and `IN (?, ?, ?)` is automatically generated.
-Also, in this case `-` prefix for lists is not required:
+Also, in this case `-` prefix for list or set is not required:
 ```kotlin
     val ids = listOf(1, 2, 3)
     var leaders = select<Person>(-"id IN $ids ORDER BY name")
 ```
+
+Maps are always read and stored as JSON string:
+```kotlin
+    class Tournament(val title: String, val participants: Map<String, Int>)
+    
+    val tournament = Tournament("Tennis", mapOf("Mike" to 1, "Jane" to 2, "Bob" to 3))
+    insert(tournament) // participants Map is stored as {"Mike":1,"Jane":2,"Bob":3}
+    val list = select<Tournament>(-"1=1") // JSON is parsed back into the participants Map.
+```
+Maps cannot be specified as a parameter in a query.
 
 ### Dynamic queries
 
@@ -267,7 +278,7 @@ Methods to select values from any source (you provide a full SELECT query):
 
 ### Insert
 
-* `insert` - inserts an entity and by default updates properties annotated with `@AutoGet` with values from the database.
+* `insert` - inserts an entity and by default updates properties annotated with `@AutoGen` with values from the database.
 * `insertMany` - inserts entities from any iterable source. It is optimized for inserting many items.
 
 ### Update
@@ -297,12 +308,11 @@ Methods to get values of generated columns:
 
 ### Customization
 
-By default, SqlPal tries to store lists and arrays as database arrays. 
-If your database does not support columns of array type, or you want to store lists as JSON in a varchar column,
-then set `SqlPal.storeArraysAs` to the appropriate value.
+By default, SqlPal stores lists, sets and arrays as database arrays if database supports columns of array type,
+and as JSON string if it does not. If other behaviour is required, then set `SqlPal.storeArraysAs` to the appropriate value.
 
-If the database supports arrays of enums, then SqlPal will store lists and arrays of enums as database arrays of enums.
-If it's not desired, then set `SqlPal.useEnumArrays` to `false`, to store enums as strings.
+If the database supports arrays of enums, then SqlPal will store lists, sets and arrays of enums as database arrays of enums.
+If that is not desired, then set `SqlPal.useEnumArrays` to `false`, to store enums as strings.
 
 If you need to read/store some custom type, it can be done by implementing the `ValueMapper` interface.
 If only storing or only reading is necessary, then you can leave the corresponding function (`readValue` or `writeValue`) empty.
@@ -334,6 +344,8 @@ class Person (
     val location: Point
 )
 ```
+If you need to manually construct an object from the query results, 
+then use `read` method overload that accepts a `createItem` callback. See example below.
 
 ### Performance tuning
 
@@ -354,4 +366,4 @@ fun readPerson(r: ResultSet) = Person(
 ```
 This approach is a bit faster, as it does not use reflection to create objects, thus you get the performance of raw JDBC.
 But for most queries that execute in a few milliseconds, the difference will be about 5%. 
-So it makes sense only for queries that are executed on the microsecond scale.
+So it makes sense only for queries that are executed on the microsecond scale or when you need custom reading logic.
