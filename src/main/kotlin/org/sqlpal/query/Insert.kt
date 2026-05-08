@@ -42,7 +42,7 @@ inline fun <reified T: Any> insertMany(items: Iterable<T>, con: Connection? = nu
 @PublishedApi
 internal fun <T: Any> insertMany(itemClass: KClass<T>, items: Iterable<T>, con: Connection? = null): Int
 {
-    val tableName = entityName(itemClass::class)
+    val tableName = entityName(itemClass)
     val sb = StringBuilder("INSERT INTO $tableName (")
 
     val props = itemClass.memberProperties.filter { !it.hasAnnotation<SqlIgnore>() && !it.hasAnnotation<AutoGen>() }
