@@ -11,6 +11,7 @@ inline fun <T> transaction(block: (Connection) -> T) = SqlPal.withConnection { t
  * @param connection that is committed or rolled back after execution.
  * @param block to execute within transaction. */
 inline fun <T> transaction(connection: Connection, block: (Connection) -> T): T {
+    val autoCommit = connection.autoCommit
     try {
         connection.autoCommit = false
         val result = block(connection)
@@ -20,5 +21,8 @@ inline fun <T> transaction(connection: Connection, block: (Connection) -> T): T 
     catch (ex: Exception) {
         connection.rollback()
         throw ex
+    }
+    finally {
+        connection.autoCommit = autoCommit
     }
 }
