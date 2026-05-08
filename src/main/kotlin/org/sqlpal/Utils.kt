@@ -141,11 +141,9 @@ internal fun colName(prop: KProperty<*>) = customName(prop) ?: toDbCase(prop.nam
 internal fun getParamsCustomNames(classType: KClass<*>, params: List<KParameter>): Map<KParameter, String> {
     val customNames = mutableMapOf<KParameter, String>()
     for (prop in classType.memberProperties) {
-        val name = customName(prop)
-        if (name != null) {
-            val param = params.first { prop.name == it.name }
-            customNames[param] = name
-        }
+        val name = customName(prop) ?: continue
+        val param = params.firstOrNull { prop.name == it.name } ?: continue
+        customNames[param] = name
     }
     return customNames
 }
