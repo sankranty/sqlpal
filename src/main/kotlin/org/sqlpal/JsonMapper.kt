@@ -18,10 +18,19 @@ internal class JsonMapper(
     private val parseValue: (String) -> Any
     private lateinit var parseKey: (String) -> Any
 
+    // For unquoted items we need also to check in case of array for ']' and for '}' in case of map,
+    // as there is no ',' after the last item.
+    private val unquotedItemDelimiters: CharArray
+
     init {
         extractItem = if (componentType.isQuotedInJson) ::extractQuotedItem else ::extractUnquotedItem
         parseValue = getParser(componentType)
-        if (keyComponentType != null) parseKey = getParser(keyComponentType)
+        if (keyComponentType == null)
+            unquotedItemDelimiters = charArrayOf(',', ']')
+        else {
+            unquotedItemDelimiters = charArrayOf(',', '}')
+            parseKey = getParser(keyComponentType)
+        }
     }
 
     companion object {
@@ -165,9 +174,6 @@ internal class JsonMapper(
         index++ // Move index to next char after closing quote.
         return json.substring(startIndex, index - 1)
     }
-
-    // For unquoted items we need to check for both ',' and ']' as there is no ',' after last item.
-    private val unquotedItemDelimiters = charArrayOf(',', ']')
 
     private fun extractUnquotedItem(): String {
         val startIndex = index
