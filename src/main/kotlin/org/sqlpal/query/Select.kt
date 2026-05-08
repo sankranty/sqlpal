@@ -25,7 +25,7 @@ import kotlin.reflect.full.memberProperties
  * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
  * If property doesn't have corresponding column, then annotate it with [SqlIgnore]. */
 inline fun <reified T: Any> selectById(id: Long, con: Connection? = null) =
-    selectByIdOrNll<T>(id, con) ?: throw IllegalArgumentException("Record with ID $id was not found.")
+    selectByIdOrNull<T>(id, con) ?: throw IllegalArgumentException("Record with ID $id was not found.")
 
 /** Selects single row with specified id, considering that:
  * - table is named as class in accordance with [SqlPal.convertNamesToSnakeCase] option,
@@ -38,7 +38,7 @@ inline fun <reified T: Any> selectById(id: Long, con: Connection? = null) =
  * @return object of specified type, created from query results by mapping
  * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
  * If property doesn't have corresponding column, then annotate it with [SqlIgnore].*/
-inline fun <reified T: Any> selectByIdOrNll(id: Long, con: Connection? = null): T? {
+inline fun <reified T: Any> selectByIdOrNull(id: Long, con: Connection? = null): T? {
     val idCol = colName(getIdProperty(T::class))
     val query = buildSelectQuery(T::class, Query("$idCol = ?", mutableListOf(id)))
     return readOneOrNull(query, con)
