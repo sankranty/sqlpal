@@ -160,7 +160,7 @@ internal class JsonMapper(
     private fun getParser(type: KType): (String) -> Any = when (type.classifier) {
         String::class -> { c -> c }
 
-        Integer::class -> Integer::parseInt
+        Int::class -> Integer::parseInt
         Long::class -> java.lang.Long::parseLong
         Byte::class -> java.lang.Byte::parseByte
         Short::class -> java.lang.Short::parseShort
