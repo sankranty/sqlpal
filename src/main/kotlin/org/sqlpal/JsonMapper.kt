@@ -43,7 +43,11 @@ internal class JsonMapper(
             else if (componentType.isQuotedInJson)
                 iterator.forEach {
                     if (it == null) sb.append("null")
-                    else sb.append('"').append(it).append('"')
+                    else {
+                        sb.append('"')
+                        if (it is String) escapeAndAppend(it, sb) else sb.append(it)
+                        sb.append('"')
+                    }
                     sb.append(',')
                 }
             else
@@ -58,16 +62,40 @@ internal class JsonMapper(
             val needQuotes = componentType.isQuotedInJson // Moved out of loop to speed up.
             val sb = StringBuilder("{")
             map.forEach { (key, value) ->
-                sb.append('"').append(key ?: "null").append('"') // Key is always quoted according to JSON format.
+                // Key is always quoted according to JSON format.
+                sb.append('"')
+                escapeAndAppend((key ?: "null").toString(), sb)
+                sb.append('"')
                 sb.append(':')
+
                 if (value == null) sb.append("null")
-                else if (needQuotes) sb.append('"').append(value).append('"')
-                else sb.append(value)
+                else if (!needQuotes) sb.append(value)
+                else {
+                    sb.append('"')
+                    if (value is String) escapeAndAppend(value, sb) else sb.append(value)
+                    sb.append('"')
+                }
                 sb.append(',')
             }
             if (sb.length > 1) sb.deleteCharAt(sb.length - 1) // Remove trailing comma
             sb.append('}')
             return sb.toString()
+        }
+
+        private fun escapeAndAppend(str: String, sb: StringBuilder) {
+            for (c in str) when (c) {
+                '\\' -> sb.append("\\\\")
+                '"' -> sb.append("\\\"")
+                '\n' -> sb.append("\\n")
+                '\r' -> sb.append("\\r")
+                '\t' -> sb.append("\\t")
+                '\b' -> sb.append("\\b")
+                '\u000C' -> sb.append("\\f")
+                else -> if (c.code < 0x20)
+                    sb.append("\\u").append(c.code.toString(16).padStart(4, '0'))
+                else
+                    sb.append(c)
+            }
         }
     }
 
@@ -163,16 +191,35 @@ internal class JsonMapper(
 
     private fun extractQuotedItem(): String {
         if (json[index] != '"') throwJsonParseError(index)
+        index++ // skip opening quote
+        val sb = StringBuilder()
 
-        val startIndex = index + 1 // Move after opening quote.
-        do {
-            index++
-            index = json.indexOf('"', index)
-            if (index < 0) throwJsonParseError( startIndex)
-        } while (json[index - 1] == '\\') // If it's escaped quote, then search further.
-
-        index++ // Move index to next char after closing quote.
-        return json.substring(startIndex, index - 1)
+        while (true) {
+            if (index >= json.length) throwJsonParseError(index)
+            when (val c = json[index++]) {
+                '"' -> return sb.toString() // closing quote
+                '\\' -> {
+                    if (index >= json.length) throwJsonParseError(index)
+                    when (val esc = json[index++]) {
+                        '"', '\\', '/' -> sb.append(esc)
+                        'n' -> sb.append('\n')
+                        'r' -> sb.append('\r')
+                        't' -> sb.append('\t')
+                        'b' -> sb.append('\b')
+                        'f' -> sb.append('\u000C')
+                        'u' -> {
+                            if (index + 4 > json.length) throwJsonParseError(index - 2)
+                            val hex = json.substring(index, index + 4)
+                            val code = hex.toIntOrNull(16) ?: throwJsonParseError(index - 2)
+                            sb.append(code.toChar())
+                            index += 4
+                        }
+                        else -> throwJsonParseError(index - 1)
+                    }
+                }
+                else -> sb.append(c)
+            }
+        }
     }
 
     private fun extractUnquotedItem(): String {
