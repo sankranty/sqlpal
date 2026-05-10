@@ -143,9 +143,10 @@ object Sql: Interpolator<Any, Query> {
     private fun finishesWithIN(str: String): Boolean {
         var i = str.length
         while (i > 0)
-            if (!str[--i].isWhitespace()) {
-                return i > 1 && (str[i - 1] == 'I' || str[i - 1] == 'i') && (str[i] == 'N' || str[i] == 'n')
-            }
+            if (!str[--i].isWhitespace())
+                return i > 2 && str[i - 2].isWhitespace() &&
+                        (str[i - 1] == 'I' || str[i - 1] == 'i') &&
+                        (str[i] == 'N' || str[i] == 'n')
         return false
     }
 }
