@@ -18,14 +18,14 @@ import java.sql.Connection
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return map of colName - value for inserted/updated row. Map contains columns specified in [autoGenColumns].
  * It is useful to get values of auto-generated columns (e.g. ID). Returns null if no rows are updated. */
-fun execWithResults(query: Query, autoGenColumns: Array<String>? = null, con: Connection? = null) = query.doAction(con, autoGenColumns) {
-    if (it.executeUpdate() == 0) return@doAction null
-    it.generatedKeys.use {  rs ->
-        rs.next()
-        val generatedValues = mutableMapOf<String, Any?>()
-        for (i in 1 .. rs.metaData.columnCount)
-            generatedValues[rs.metaData.getColumnLabel(i)] = rs.getObject(i)
-        generatedValues
+fun execWithResults(query: Query, autoGenColumns: Array<String>? = null, con: Connection? = null) = query.doAction(con, autoGenColumns) { stmt ->
+    if (stmt.executeUpdate() == 0) null
+    else stmt.generatedKeys.use { rs ->
+        if (!rs.next()) null
+        else mutableMapOf<String, Any?>().let {
+            for (i in 1..rs.metaData.columnCount)
+                it[rs.metaData.getColumnLabel(i)] = rs.getObject(i)
+        }
     }
 }
 
@@ -37,10 +37,9 @@ fun execWithResults(query: Query, autoGenColumns: Array<String>? = null, con: Co
  * @return value from the first column of the first row of returned result set, or null if result set is empty.
  * Note that if RETURNING clause was not specified in the query,
  * then driver returns all columns, and first one can be any of them. */
-fun execWithResult(query: Query, con: Connection? = null) = query.doAction(con) {
-    if (it.executeUpdate() == 0) return@doAction null
-    it.generatedKeys.next()
-    it.generatedKeys.getObject(1)
+fun execWithResult(query: Query, con: Connection? = null) = query.doAction(con) { stmt ->
+    if (stmt.executeUpdate() == 0) null
+    else stmt.generatedKeys.use { if (!it.next()) null else it.getObject(1) }
 }
 
 /** Executes INSERT, UPDATE, DELETE or command with no results, and returns number of rows affected.
