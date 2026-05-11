@@ -66,6 +66,7 @@ fun main() {
         p = selectOne<Person>(-"name = 'Mike'", it)
         // ...doing some stuff with person object
         update(p, it) // entity is identified by property annotated with @Id
+        // ...do some other stuff
         delete(p, it)
     }
     
@@ -82,9 +83,9 @@ Because none of the numerous ORMs is at the same time laconic, fast and flexible
 It's JPQL/HQL in JPA/Hibernate, Kotlin Exposed, JOOQ and QueryDSL.
 While this approach provides strong typing, it has a number of drawbacks:
   * DSL does not provide all features of native SQL. 
-For instance, JOOQ or QueryDSL do not directly support the `ST_DWithin` spatial function
-(which provides efficient search within a given radius using a spatial index), 
-or the `<->` operator (which allows getting the nearest locations very fast). 
+For instance, JPQL does not support window functions, JOOQ and QueryDSL do not directly support 
+the `ST_DWithin` spatial function (which provides efficient search within a given radius using a spatial index), 
+and the `<->` operator (which allows getting the nearest locations very fast). 
   * Not all DSLs are as expressive as SQL - e.g., `id >= 10 and created <= '01.01.1990'` 
 is much clearer than `Person.id.gte(10).and(Person.created.loe("01.01.1990"))`
   * Transformation of DSL into SQL adds performance overhead that can be significant, depending on the case.
@@ -92,7 +93,7 @@ is much clearer than `Person.id.gte(10).and(Person.created.loe("01.01.1990"))`
 * **Native SQL queries with bind parameters.** 
 This is provided by most ORMs, including Spring Data JPA/JDBC, Kapper, MyBatis. Main drawbacks are:
   * It requires you to manually specify all bind parameters.
-  * When it is done via annotations, there is no way to specify conditions dynamically.
+  * When it is done via annotations, there is no way to form query conditions dynamically.
 
 * **Query construction.** 
 It allows you to conditionally construct a query. It's provided, for example, by JPA Specification. Drawbacks:
@@ -353,7 +354,7 @@ SqlPal is designed to be as fast as possible out of the box. Tuning is necessary
 In most cases, the main performance impact depends on optimization of queries and database indexes.
 
 For performance-critical queries, SqlPal has a `read` overload that accepts a `createItem` callback. 
-For this case, SqlPal provides extension methods on `ResultSet` for more convenient manual reading of values:
+For this case, SqlPal also provides extension methods on `ResultSet` for more convenient manual reading of values:
 ```kotlin
 fun readPerson(r: ResultSet) = Person(
     r long "id",
@@ -365,5 +366,5 @@ fun readPerson(r: ResultSet) = Person(
 )
 ```
 This approach is a bit faster, as it does not use reflection to create objects, thus you get the performance of raw JDBC.
-But for most queries that execute in a few milliseconds, the difference will be about 5%. 
+But for most queries that execute in about a few milliseconds, the difference will be within few presents or even not noticeable. 
 So it makes sense only for queries that are executed on the microsecond scale or when you need custom reading logic.
