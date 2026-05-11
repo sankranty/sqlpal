@@ -41,7 +41,15 @@ operator fun String.unaryMinus(): Query = interpolatorBody()
  * If 'condition' is false, then the rest of the content to the line break is not included.
  * For several mutually exclusive conditions use $[Else]$[If] and $[Else] which also have scope upto the line break.
  *
- * To inline value directly into the query string (instead of adding it as a bind parameter), use $[I]$ instead of $. */
+ * To inline value directly into the query string (instead of adding it as a bind parameter), use $[I]$ instead of $.
+ *
+ * For common LIKE conditions you can use next convenience functions for more compact syntax:
+ * - [includes] and [includesIgnoreCase],
+ * - [beginsWith] and [beginsWithIgnoreCase],
+ * - [finishesWith] and [finishesWithIgnoreCase], e.g.:
+ * ```
+ * read<Person>(-"SELECT * FROM pers WHERE id > $id and ${"name" beginsWithIgnoreCase "Mic"}")
+ * ```*/
 object Sql: Interpolator<Any, Query> {
 
     override fun interpolate(parts: () -> List<String>, params: () -> List<Any>): Query {
@@ -73,7 +81,12 @@ object Sql: Interpolator<Any, Query> {
                 i++  // Move to the parameter after 'I'.
                 builder.append(params[i]) // inline value of the param directly into the string instead of adding it as a binding parameter.
             }
-            // All other values add as a binding parameters.
+            // All other values add as binding parameters.
+            else if (params[i] is Like) {
+                val like = params[i] as Like
+                like.appendLikeCondition(builder)
+                bindParams.add(like.getLikePattern())
+            }
             else if (!handleInWithCollection(params[i], strings[i], builder, bindParams))
             {
                 if (params[i] is Collection<*>) throw SqlInterpolatorException(
