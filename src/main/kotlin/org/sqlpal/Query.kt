@@ -140,7 +140,8 @@ class Query @PublishedApi internal constructor(
             val rowsAffected = cmd.executeUpdate()
             if (rowsAffected > 0 && autoGenArr != null)
                 cmd.generatedKeys.use { rs ->
-                    rs.next()
+                    if (!rs.next()) throw SQLException("INSERT/UPDATE command affected non-zero rows, " +
+                            "but generated keys for requested columns were not returned by driver/database.")
                     val className = entity::class.qualifiedName
                     for (i in 1..rs.metaData.columnCount) {
                         val prop = autoGenColumns[rs.metaData.getColumnLabel(i)] ?: continue
