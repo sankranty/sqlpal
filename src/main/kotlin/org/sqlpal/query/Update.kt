@@ -144,6 +144,9 @@ fun set(vararg items: Pair<KProperty0<*>, Any?>) = PropsToUpdate(
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return number of rows affected. */
 fun update(entity: Any, params: List<Pair<String, Any?>>, con: Connection? = null): Int {
+    if (params.isEmpty()) throw SqlPalException("Can't generate UPDATE statement " +
+            "for the class ${entity::class.qualifiedName} as no columns were passed to the update method.")
+
     val sb = StringBuilder("UPDATE ${entityName(entity::class)} SET ")
 
     val bindParams = ArrayList<Any?>(params.size)

@@ -51,6 +51,8 @@ internal fun <T: Any> insertMany(itemClass: KClass<T>, items: Iterable<T>, con: 
         sb.append(colName(p))
         sb.append(',')
     }
+    if (!sb.endsWith(',')) throw SqlPalException("Can't generate INSERT statement " +
+            "for the class ${itemClass.qualifiedName} as it does not have properties suitable for insert.")
     sb.deleteCharAt(sb.length - 1) // Remove trailing comma
     appendValuesClause(sb, props.size)
 

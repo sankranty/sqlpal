@@ -47,6 +47,8 @@ internal inline fun execInsertOrUpdate(entity: Any, propsToUpdate: PropsToUpdate
                 propsToUpdate.exclude.find { p.name == it.name }
                     ?: processProp(entity, p, bindParams, sb, paramPlaceholder, updateAutoGenValues, autoGenColumns)
     }
+    if (!sb.endsWith(',')) throw SqlPalException("Can't generate INSERT/UPDATE statement " +
+            "for the class ${entity::class.qualifiedName} as no suitable properties specified.")
     sb.deleteCharAt(sb.length - 1) // Remove trailing comma
 
     buildParamsClause(entity, sb, bindParams)

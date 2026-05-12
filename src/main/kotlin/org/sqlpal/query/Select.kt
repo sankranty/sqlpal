@@ -159,6 +159,8 @@ internal fun <T: Any> buildSelectQuery(type: KClass<T>, where: Query, includeOpt
             if (p is KMutableProperty<*> && !p.hasAnnotation<SqlIgnore>())
                 sb.append(colName(p), ',')
 
+    if (!sb.endsWith(',')) throw SqlPalException("Can't generate SELECT statement " +
+            "for the class ${type.qualifiedName} as it has no suitable properties.")
     sb.deleteCharAt(sb.length - 1) // Remove trailing comma
 
     sb.append(" FROM ")
