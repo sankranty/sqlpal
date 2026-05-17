@@ -163,13 +163,13 @@ class Query @PublishedApi internal constructor(
         else if (type.isEnum) { i, t -> getString(i)?.toEnum(t) }
         else when (type.classifier) {
             String::class -> { i, _ -> getString(i) }
-            Int::class -> valueTypeReader(type, ResultSet::getInt)
-            Long::class -> valueTypeReader(type, ResultSet::getLong)
-            Byte::class -> valueTypeReader(type, ResultSet::getByte)
-            Short::class -> valueTypeReader(type, ResultSet::getShort)
-            Float::class -> valueTypeReader(type, ResultSet::getFloat)
-            Double::class -> valueTypeReader(type, ResultSet::getDouble)
-            Boolean::class -> valueTypeReader(type, ResultSet::getBoolean)
+            Int::class -> valueTypeReader(type, param, className, ResultSet::getInt)
+            Long::class -> valueTypeReader(type, param, className, ResultSet::getLong)
+            Byte::class -> valueTypeReader(type, param, className, ResultSet::getByte)
+            Short::class -> valueTypeReader(type, param, className, ResultSet::getShort)
+            Float::class -> valueTypeReader(type, param, className, ResultSet::getFloat)
+            Double::class -> valueTypeReader(type, param, className, ResultSet::getDouble)
+            Boolean::class -> valueTypeReader(type, param, className, ResultSet::getBoolean)
 
             // Read JSR-310 standard types via getObject
             // (it's preferable than getTimestamp as getTimestamp implicitly alters zone
@@ -239,11 +239,15 @@ class Query @PublishedApi internal constructor(
         return if (mapper != null) mapper::readValue else null
     }
 
-    private inline fun <T> valueTypeReader(valueType: KType, crossinline getValue: ResultSet.(Int) -> T): ResultSet.(Int, KType) -> Any? =
+    private inline fun <T> valueTypeReader(valueType: KType, param: KParameter?, className: String?,
+                                           crossinline getValue: ResultSet.(Int) -> T): ResultSet.(Int, KType) -> Any? =
         if (valueType.isMarkedNullable)
             { i, _ -> valueOrNull { getValue(i) } }
         else
-            { i, _ -> getValue(i) }
+            { i, _ -> valueOrNull { getValue(i) } ?:
+            throw SQLException("NULL is read from column that maps to property '${param?.name}' of '$className' class, " +
+                    "that has not nullable type '${valueType.classifier}'. " +
+                    "Mark property nullable or set values in the column to non-null values.") }
 
     /** Calls [fillItemParams] for each item in [items] and to set bind parameters and executes query as batch.
      * @param con If specified, then command is executed on it, and it is not closed after use.
