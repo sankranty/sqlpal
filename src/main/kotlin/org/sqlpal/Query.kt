@@ -52,19 +52,21 @@ class Query @PublishedApi internal constructor(
         // then also create map, to specify only parameters, that have columns in result set.
         val createObject = if (hasUnmappedOptionalParams) {
             val map = mutableMapOf<KParameter, Any?>()
-            for (r in paramReaders) map[r.param!!] = null
+            for (r in paramReaders) map[r.param!!] = null // add parameters to the map
+            val paramEntries = map.entries.toTypedArray(); // create array of map entries as it's faster to iterate over an array than a map
             {
                 var i = 0
-                for (entry in map) entry.setValue(values[i++])
+                while (i < paramEntries.size) paramEntries[i].setValue(values[i++])
                 constr.callBy(map)
             }
         } else
             fun () = constr.call(*values)
 
         // For each row in ResultSet read values by readers and pass them to primary constructor.
+        val paramIndices = paramReaders.indices
         val results = if (capacity >= 0) ArrayList<T>(capacity) else ArrayList()
         while (rs.next()) {
-            for (i in paramReaders.indices) {
+            for (i in paramIndices) {
                 val (read, colIndex, type) = paramReaders[i]
                 values[i] = rs.read(colIndex, type)
             }
