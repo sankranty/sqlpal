@@ -156,6 +156,7 @@ class Query @PublishedApi internal constructor(
         }
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     private fun createReader(type: KType, colIndex: Int, param: KParameter?, className: String?): Reader
     {
         var valueType = type
@@ -189,6 +190,10 @@ class Query @PublishedApi internal constructor(
             SQLXML::class -> { i, _ -> getSQLXML(i) }
             UUID::class -> { i, _ -> getObject(i) } // Not guaranteed for all DB, but supported at least by Postgres.
 
+            UInt::class -> valueTypeReader(type, param, className) { getInt(it).toUInt() }
+            ULong::class -> valueTypeReader(type, param, className) { getLong(it).toULong() }
+            UByte::class -> valueTypeReader(type, param, className) { getByte(it).toUByte() }
+            UShort::class -> valueTypeReader(type, param, className) { getShort(it).toUShort() }
             else -> { // Handle collections and arrays
                 val isList = type.kClass?.isSubclassOf(List::class) == true
                 val isSet = type.kClass?.isSubclassOf(Set::class) == true
@@ -218,17 +223,30 @@ class Query @PublishedApi internal constructor(
                         // type.classifier returns IntArray for Array<Int> (similarly for other primitive types),
                         // so distinguish Array<*> from unboxed arrays by not empty generic arguments.
                         else if (type.arguments.isNotEmpty()) fun ResultSet.(i, _) = getArray(i)?.array
+                        // If type is unboxed array then convert Array<*> to unboxed array
                         else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toArrayOfType(type)
                 }
                 else if (type.kClass?.isSubclassOf(Map::class) == true) {
                     val jsonMapper = JsonMapper(colIndex, type.arguments[1].type!!, type.arguments[0].type!!);
                     { i, _ -> jsonMapper.parseMap(getString(i)) }
                 }
-                else throw SqlPalException("Property '${param?.name}' of $className class has type '${type.classifier}', " +
-                        "for witch mapping to SQL type is not implemented. " +
-                        "To provide mapper for '${type.classifier}' use SqlPal.addTypeMapper method " +
-                        "to support it across the entire app, or annotate this property with @Mapper annotation."
-                )
+                else {
+                    getUnsignedArrayType(type.kClass!!)?.let {
+                        // Handle unsigned arrays
+                        valueType = it.createType()
+                        if (SqlPal.storeAsJson(type)) {
+                            val jsonMapper = JsonMapper(colIndex, valueType)
+                            fun ResultSet.(i, _) = jsonMapper.parseList(getString(i))?.toArrayOfType(type)
+                        }
+                        else if (type.classifier == UByteArray::class) fun ResultSet.(i, _) = getBytes(i)?.toArrayOfType(type)
+                        else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toArrayOfType(type)
+                    } ?:
+                    throw SqlPalException("Property '${param?.name}' of $className class has type '${type.classifier}', " +
+                            "for witch mapping to SQL type is not implemented. " +
+                            "To provide mapper for '${type.classifier}' use SqlPal.addTypeMapper method " +
+                            "to support it across the entire app, or annotate this property with @Mapper annotation."
+                    )
+                }
             }
         }
         return Reader(reader, colIndex, valueType, param)
@@ -319,6 +337,10 @@ class Query @PublishedApi internal constructor(
                 is ZonedDateTime -> statement.setObject(index, value.toOffsetDateTime())
                 is Instant -> statement.setObject(index, value.atOffset(ZoneOffset.UTC))
                 is Currency -> statement.setString(index, value.toString())
+                is UInt -> statement.setInt(index, value.toInt())
+                is ULong -> statement.setLong(index, value.toLong())
+                is UByte -> statement.setByte(index, value.toByte())
+                is UShort -> statement.setShort(index, value.toShort())
                 is Map<*, *> -> {
                     val json = JsonMapper.serialize(value, componentType?: throwNotWrapped(index))
                     statement.setString(index, json)
@@ -338,22 +360,29 @@ class Query @PublishedApi internal constructor(
     private fun setArray(statement: PreparedStatement, index: Int, value: Any, componentType: KClass<out Any>?) {
         componentType ?: throwNotWrapped(index)
 
-        val items = getItems(value)
-
         if (SqlPal.storeAsJson(value is ByteArray)) {
             if (componentType == Any::class) throw SqlPalException("Parameter $index is List/Array of Any. " +
                     "It can't be serialized to JSON. Only lists/arrays of certain type are supported.")
 
+            val items = getItems(value)
             val json = JsonMapper.serialize(items.isTypedArray, items.iterator, componentType)
             statement.setString(index, json)
         }
         else if (componentType.java.isEnum)
-            setEnumArray(statement, index, items, componentType)
+            setEnumArray(statement, index, getItems(value), componentType)
         else {
+            // Kotlin unsigned arrays (e.g. UIntArray) are not recognized by JDBC,
+            // thus considering that they are value classes, get their underlying value that is normal array.
+            // Check for if before check for Collection as unsigned arrays implement Collection interface.
+            val array = if (getUnsignedArrayType(value) != null) value.javaClass.declaredFields.first().run{
+                isAccessible = true
+                get(value)
+            }
             // JDBC supports arrays but not collections, so if it's a Collection, then convert it to Array.
             // Array must be of certain type, not array of Any, otherwise database driver would not be able
             // to figure out to what SQL type map it to. So create it via reflection to explicitly specify type.
-            val array = if (value is Collection<*>) value.toArrayOfType(componentType) else value
+            else if (value is Collection<*>) value.toArrayOfType(componentType)
+            else value
             // Don't specify Types.ARRAY for the setObject, as if it's a ByteArray,
             // then it should be stored as a binary object, not as an array.
             statement.setObject(index, array)
@@ -406,21 +435,31 @@ private fun ResultSet.readEnumSet(colIndex: Int, enumType: KType): Set<Enum<*>>?
     return set
 }
 
-private fun Array<*>.toArrayOfType(type: KType) = iterator().toArrayOfType(type.componentType!!, size)
+private fun ByteArray.toArrayOfType(type: KType) = iterator().toArrayOfType(type, size)
 
-private fun Collection<*>.toArrayOfType(type: KType) = iterator().toArrayOfType(type.componentType!!, size)
+private fun Array<*>.toArrayOfType(type: KType) = iterator().toArrayOfType(type, size)
+
+private fun Collection<*>.toArrayOfType(type: KType) = iterator().toArrayOfType(type, size)
+
+@OptIn(ExperimentalUnsignedTypes::class)
+private fun Iterator<*>.toArrayOfType(type: KType, size: Int) = when (type.kClass) {
+    UIntArray::class -> UIntArray(size) { next().let { if (it is Int) it.toUInt() else it as UInt } }
+    ULongArray::class -> ULongArray(size) { next().let { if (it is Long) it.toULong() else it as ULong } }
+    UShortArray::class -> UShortArray(size) { next().let { if (it is Short) it.toUShort() else it as UShort } }
+    UByteArray::class -> UByteArray(size) { next().let { if (it is Byte) it.toUByte() else it as UByte } }
+    else -> toArrayOfType(type.componentType!!, size)
+}
 
 private fun Collection<*>.toArrayOfType(componentType: KClass<*>) = iterator().toArrayOfType(componentType.java, size)
 
-private fun Iterator<*>.toArrayOfType(componentType: Class<*>, size: Int): Any {
+private fun Iterator<*>.toArrayOfType(componentType: Class<*>, size: Int) =
     // Using reflection to create array of specified type,
     // as using Collection.toTypedArray will produce Array<Any> due to generic type erasure.
-    val array = java.lang.reflect.Array.newInstance(componentType, size)
-    var i = 0
-    // Unboxed arrays (e.g. IntArray) don't have a base type, so using Array.set to set values.
-    forEach { java.lang.reflect.Array.set(array, i++, it) }
-    return array
-}
+    java.lang.reflect.Array.newInstance(componentType, size).also { array ->
+        var i = 0
+        // Unboxed arrays (e.g. IntArray) don't have a base type, so using Array.set to set values.
+        forEach { java.lang.reflect.Array.set(array, i++, it) }
+    }
 
 /** Does next:
  * - removes quotes (if quoted),

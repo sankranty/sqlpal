@@ -165,6 +165,11 @@ internal class JsonMapper(
         Byte::class -> java.lang.Byte::parseByte
         Short::class -> java.lang.Short::parseShort
 
+        UInt::class -> { c -> c.toUInt() }
+        ULong::class -> { c -> c.toULong() }
+        UByte::class -> { c -> c.toUByte() }
+        UShort::class -> { c -> c.toUShort() }
+
         Float::class -> java.lang.Float::parseFloat
         Double::class -> java.lang.Double::parseDouble
 

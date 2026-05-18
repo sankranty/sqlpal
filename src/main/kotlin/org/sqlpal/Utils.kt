@@ -106,13 +106,16 @@ internal fun addValueToBindParams(value: Any?, classType: KClass<*>, p: KPropert
         // Wrap Collection with object that also contains information about generic type of the Collection.
         // It's necessary to handle empty Collection, because unlike Array, empty Collection does not contain
         // information about its generic type, what makes impossible to map it to appropriate SQL type.
-        val indexOfComponentTypeArgument = if (value is Map<*, *>) 1 else 0
-        val componentType = p.returnType.arguments[indexOfComponentTypeArgument].type?.classifier as? KClass<*>
-        if (componentType == null || componentType == Any::class)
-            throw SqlPalException("The generic type of '${p.name}' property of '${classType.qualifiedName}' class " +
-                    "is not of primitive type and thus can't be mapped to any SQL type. " +
-                    "Only Collections of primitive types are supported " +
-                    "and generic type must be specified explicitly, not List<*> or Map<Any, Any>.")
+        var componentType = getUnsignedArrayType(value)
+        if (componentType == null) {
+            val indexOfComponentTypeArgument = if (value is Map<*, *>) 1 else 0
+            componentType = p.returnType.arguments[indexOfComponentTypeArgument].type?.classifier as? KClass<*>
+            if (componentType == null || componentType == Any::class)
+                throw SqlPalException("The generic type of '${p.name}' property of '${classType.qualifiedName}' class " +
+                            "is not of primitive type and thus can't be mapped to any SQL type. " +
+                            "Only Collections of primitive types are supported " +
+                            "and generic type must be specified explicitly, not List<*> or Map<Any, Any>.")
+        }
         CollectionAndType(value, componentType)
     } else
         value
@@ -183,7 +186,7 @@ internal class Items(val iterator: Iterator<*>, val size: Int, val isTypedArray:
 internal fun getItems(value: Any) =
     // There is no base class for arrays, but all arrays and collections have iterator, so get it to iterate over array.
     when (value) {
-        is Collection<*> -> Items(value.iterator(), value.size, false)
+        is Collection<*> -> Items(value.iterator(), value.size, getUnsignedArrayType(value) != null)
         is Array<*> -> Items(value.iterator(), value.size, false)
         is ByteArray -> Items(value.iterator(), value.size)
         is ShortArray -> Items(value.iterator(), value.size)
@@ -193,6 +196,20 @@ internal fun getItems(value: Any) =
         is DoubleArray -> Items(value.iterator(), value.size)
         is BooleanArray -> Items(value.iterator(), value.size)
         else -> Items((value as CharArray).iterator(), value.size)
+    }
+
+// Method is used for 2 purposes:
+// 1. To get component type as unlike other arrays unsigned array does not store component type.
+// 2. To distinguish unsigned arrays from collection as unlike other arrays they implement Collection interface.
+internal fun getUnsignedArrayType(value: Any): KClass<*>? =getUnsignedArrayType(value::class)
+@OptIn(ExperimentalUnsignedTypes::class)
+internal fun getUnsignedArrayType(valueType: KClass<*>): KClass<*>? =
+    when (valueType) {
+        UByteArray::class -> UByte::class
+        UShortArray::class -> UShort::class
+        UIntArray::class -> UInt::class
+        ULongArray::class -> ULong::class
+        else -> null
     }
 
 @Suppress("UNCHECKED_CAST")
