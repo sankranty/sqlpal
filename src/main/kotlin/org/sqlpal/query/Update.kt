@@ -175,12 +175,12 @@ fun update(entity: Any, params: List<Pair<String, Any?>>, con: Connection? = nul
  * Specifying connection is useful when need to execute in transaction, use [transaction] method for convenience.
  * @return number of updated rows. */
 inline fun <reified T> update(where: Query, vararg propsToSet: Pair<KProperty1<T, *>, Any?>, con: Connection? = null) =
-    // Public inline function can't access private members, while it must be inline to get generic type.
-    // So implementation is moved to separate internal method, that receives type just as parameter.
-    execUpdate(T::class, where, propsToSet, con)
+    // This method must be inline to obtain generic type, but public inline function can't access private members.
+    // So implementation is moved to the separate internal method, that receives type just as a parameter.
+    updateWithoutObject(T::class, where, propsToSet, con)
 
 @PublishedApi
-internal fun execUpdate(classType: KClass<*>, where: Query, propsToSet: Array<out Pair<KProperty1<*, *>, Any?>>, con: Connection?): Int
+internal fun updateWithoutObject(classType: KClass<*>, where: Query, propsToSet: Array<out Pair<KProperty1<*, *>, Any?>>, con: Connection?): Int
 {
     val sb = StringBuilder("UPDATE ${entityName(classType)} SET ")
     val bindParams = ArrayList<Any?>(propsToSet.size)
