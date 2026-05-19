@@ -198,13 +198,15 @@ class Query @PublishedApi internal constructor(
                 val isList = type.kClass?.isSubclassOf(List::class) == true
                 val isSet = type.kClass?.isSubclassOf(Set::class) == true
                 val isArray = type.kClass?.java?.isArray == true // arrays don't have base type (there are IntArray, ByteArray, etc.), so use isArray prop.
+                val unsignedArrayType = getUnsignedArrayType(type.kClass!!)
 
-                if (isList || isSet || isArray) {
+                if (isList || isSet || isArray || unsignedArrayType != null) {
                     // For collection or array, get type of its elements.
                     // Type of unboxed array (e.g. IntArray) does not have generic arguments,
                     // in this case obtain type of elements via componentType property.
                     valueType = if (type.arguments.isNotEmpty()) type.arguments[0].type!!
-                    else type.kClass!!.java.componentType.kotlin.createType()
+                    else if (isArray) type.kClass!!.java.componentType.kotlin.createType()
+                    else unsignedArrayType!!.createType()
 
                     val jsonMapper = if (SqlPal.storeAsJson(type)) JsonMapper(colIndex, valueType) else null
                     if (isList)
@@ -219,6 +221,7 @@ class Query @PublishedApi internal constructor(
                         if (jsonMapper != null) { i, _ -> jsonMapper.parseList(getString(i))?.toArrayOfType(type) }
                         else if (valueType.isEnum) ResultSet::readEnumArray
                         else if (type.classifier == ByteArray::class) { i, _ -> getBytes(i) }
+                        else if (type.classifier == UByteArray::class) { i, _ -> getBytes(i)?.toArrayOfType(type) }
                         // Due to Kotlin bug https://github.com/Kotlin/dataframe/issues/678
                         // type.classifier returns IntArray for Array<Int> (similarly for other primitive types),
                         // so distinguish Array<*> from unboxed arrays by not empty generic arguments.
@@ -230,23 +233,11 @@ class Query @PublishedApi internal constructor(
                     val jsonMapper = JsonMapper(colIndex, type.arguments[1].type!!, type.arguments[0].type!!);
                     { i, _ -> jsonMapper.parseMap(getString(i)) }
                 }
-                else {
-                    getUnsignedArrayType(type.kClass!!)?.let {
-                        // Handle unsigned arrays
-                        valueType = it.createType()
-                        if (SqlPal.storeAsJson(type)) {
-                            val jsonMapper = JsonMapper(colIndex, valueType)
-                            fun ResultSet.(i, _) = jsonMapper.parseList(getString(i))?.toArrayOfType(type)
-                        }
-                        else if (type.classifier == UByteArray::class) fun ResultSet.(i, _) = getBytes(i)?.toArrayOfType(type)
-                        else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toArrayOfType(type)
-                    } ?:
-                    throw SqlPalException("Property '${param?.name}' of $className class has type '${type.classifier}', " +
+                else throw SqlPalException("Property '${param?.name}' of $className class has type '${type.classifier}', " +
                             "for witch mapping to SQL type is not implemented. " +
                             "To provide mapper for '${type.classifier}' use SqlPal.addTypeMapper method " +
                             "to support it across the entire app, or annotate this property with @Mapper annotation."
                     )
-                }
             }
         }
         return Reader(reader, colIndex, valueType, param)
