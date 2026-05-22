@@ -45,7 +45,7 @@ class Query @PublishedApi internal constructor(
 
         // Create reader for each constructor parameter and properties (if there are corresponding columns)
         val constr = getConstructor(classType)
-        val (hasUnmappedOptionalParams, paramReaders, propReaders) = createReaders(constr.parameters, colIndices, classType)
+        val (hasUnmappedOptionalParams, paramReaders, propReaders) = createReaders(constr.parameters, colIndices, classType, stmt)
         val values = arrayOfNulls<Any>(paramReaders.count()) // Array where to read values for each row
 
         // If primary constructor has optional params, for which there are no corresponding columns,
@@ -82,7 +82,8 @@ class Query @PublishedApi internal constructor(
         results
     }
 
-    private fun <T: Any> createReaders(params: List<KParameter>, colIndices: MutableMap<String, Int>, classType: KClass<T>):
+    private fun <T: Any> createReaders(params: List<KParameter>, colIndices: MutableMap<String, Int>,
+                                       classType: KClass<T>, stmt: PreparedStatement):
             Triple<Boolean, List<Reader>, List<Pair<KMutableProperty1<T, Any?>, Reader>>?>
     {
         val customNames = getParamsCustomNames(classType, params)
@@ -92,7 +93,7 @@ class Query @PublishedApi internal constructor(
             val paramName = customNames[param]?.toPlainName() ?: param.name!!.lowercase()
             val colIndex = colIndices.remove(paramName) // remove instead of get to check further if there are any columns left
             if (colIndex != null)
-                paramReaders.add(createReader(param.type, colIndex, param, classType.qualifiedName))
+                paramReaders.add(createReader(param.type, colIndex, param, classType.qualifiedName, stmt))
             else
                 if (param.isOptional) hasUnmappedOptionalParams = true
                 else throw SQLException("ResultSet doesn't has column that maps to required parameter " +
@@ -114,7 +115,7 @@ class Query @PublishedApi internal constructor(
                         ?: throw SqlPalException("Result set contains column that corresponds to property " +
                                 "'${prop.name}' of '${classType.qualifiedName}' class, but property is not mutable." +
                                 "Change property declaration from val to var.")
-                    val reader = createReader(prop.returnType, colIndex, null, classType.qualifiedName)
+                    val reader = createReader(prop.returnType, colIndex, null, classType.qualifiedName, stmt)
                     readers.add(p to reader)
                 }
             }
@@ -128,7 +129,7 @@ class Query @PublishedApi internal constructor(
     internal fun <T: Any> readValues(valueType: KClass<T>, capacity: Int, con: Connection?) = doAction(con) { stmt ->
         val rs = stmt.executeQuery()
         val results = if (capacity >= 0) ArrayList<T>(capacity) else ArrayList()
-        val (read, colIndex, type) = createReader(valueType.createType(),1, null, "value")
+        val (read, colIndex, type) = createReader(valueType.createType(),1, null, "value", stmt)
         while (rs.next())
             @Suppress("UNCHECKED_CAST")
             results.add(rs.read(colIndex, type) as T)
@@ -147,7 +148,7 @@ class Query @PublishedApi internal constructor(
                     val className = entity::class.qualifiedName
                     for (i in 1..rs.metaData.columnCount) {
                         val prop = autoGenColumns[rs.metaData.getColumnLabel(i).lowercase()] ?: continue
-                        val (read, _, type) = createReader(prop.returnType, i, null, className)
+                        val (read, _, type) = createReader(prop.returnType, i, null, className, cmd)
                         val value = rs.read(i, type)
                         prop.set(entity, value)
                     }
@@ -157,7 +158,7 @@ class Query @PublishedApi internal constructor(
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)
-    private fun createReader(type: KType, colIndex: Int, param: KParameter?, className: String?): Reader
+    private fun createReader(type: KType, colIndex: Int, param: KParameter?, className: String?, stmt: PreparedStatement): Reader
     {
         var valueType = type
         val customReader = getCustomReader(type)
@@ -225,7 +226,8 @@ class Query @PublishedApi internal constructor(
                         // Due to Kotlin bug https://github.com/Kotlin/dataframe/issues/678
                         // type.classifier returns IntArray for Array<Int> (similarly for other primitive types),
                         // so distinguish Array<*> from unboxed arrays by not empty generic arguments.
-                        else if (type.arguments.isNotEmpty()) fun ResultSet.(i, _) = getArray(i)?.array
+                        // Also, only Postgres returns typed arrays. H2 returns Array<Any>, what is handled in next branch.
+                        else if (type.arguments.isNotEmpty() && stmt.isPostgres) fun ResultSet.(i, _) = getArray(i)?.array
                         // If type is unboxed array then convert Array<*> to unboxed array
                         else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toArrayOfType(type)
                 }
