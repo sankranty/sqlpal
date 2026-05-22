@@ -168,13 +168,15 @@ private fun camel2Snake(name: String): String {
     return sb.toString()
 }
 
-/** Converts String from snake_case to camelCase.*/
+/** Converts String from snake_case to camelCase
+ * "_col_name_" will be converted to "_colName_".*/
 private fun snake2Camel(name: String): String {
     var i = 0
+    val len = name.length
     val sb = StringBuilder()
-    while (i < name.length) {
-        if (name[i] != '_') sb.append(name[i])
-        else if (i++ < name.length) sb.append(name[i].uppercase())
+    while (i < len) {
+        if (name[i] != '_' || i == 0 || i == len - 1) sb.append(name[i])
+        else if (i++ < len) sb.append(name[i].uppercase())
         i++
     }
     return sb.toString()
