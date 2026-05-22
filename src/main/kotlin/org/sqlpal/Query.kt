@@ -333,7 +333,9 @@ class Query @PublishedApi internal constructor(
                 continue
 
             when (value) {
-                is Enum<*> -> statement.setObject(index, value, Types.OTHER)
+                is Enum<*> ->
+                    if (statement.isPostgres) statement.setObject(index, value, Types.OTHER)
+                    else statement.setString(index, value.name)
                 is ZonedDateTime -> statement.setObject(index, value.toOffsetDateTime())
                 is Instant -> statement.setObject(index, value.atOffset(ZoneOffset.UTC))
                 is Currency -> statement.setString(index, value.toString())
@@ -393,13 +395,15 @@ class Query @PublishedApi internal constructor(
         // Convert enum values to strings.
         val array = Array(items.size) { (items.iterator.next() as Enum<*>?)?.name }
 
-        val con = statement.connection
-        if (SqlPal.useEnumArrays && con.metaData.databaseProductName.lowercase() == "postgresql") {
-            val sqlArray = con.createArrayOf(entityName(componentType), array)
+        if (SqlPal.useEnumArrays && statement.isPostgres) {
+            val sqlArray = statement.connection.createArrayOf(entityName(componentType), array)
             statement.setArray(index, sqlArray)
         } else
             statement.setObject(index, array, Types.ARRAY)
     }
+
+    private val PreparedStatement.isPostgres get() =
+        connection.metaData.databaseProductName.lowercase() == "postgresql"
 }
 
 @Suppress("UNCHECKED_CAST")
