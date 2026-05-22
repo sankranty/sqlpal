@@ -22,7 +22,7 @@ fun execWithResults(query: Query, autoGenColumns: Array<String>? = null, con: Co
     if (stmt.executeUpdate() == 0) null
     else stmt.generatedKeys.use { rs ->
         if (!rs.next()) null
-        else mutableMapOf<String, Any?>().let {
+        else mutableMapOf<String, Any?>().also {
             for (i in 1..rs.metaData.columnCount)
                 it[rs.metaData.getColumnLabel(i)] = rs.getObject(i)
         }
