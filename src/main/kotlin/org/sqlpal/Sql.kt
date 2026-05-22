@@ -157,7 +157,7 @@ object Sql: Interpolator<Any, Query> {
         var i = str.length
         while (i > 0)
             if (!str[--i].isWhitespace())
-                return i > 2 && str[i - 2].isWhitespace() &&
+                return i >= 2 && str[i - 2].isWhitespace() &&
                         (str[i - 1] == 'I' || str[i - 1] == 'i') &&
                         (str[i] == 'N' || str[i] == 'n')
         return false
