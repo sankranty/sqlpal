@@ -111,6 +111,10 @@ fun ifElse() {
 fun whereIn() {
     Education.values().forEach { insert(Pal(edu = it)) }
 
+    val empty = emptyList<Int>()
+    val count = select<Pal>(-"id in $empty").size
+    println("Empty list test: list size - $count")
+
     val ids = listOf(0, 1, 2, 11)
     select<Pal>(-"id in $ids").forEach { println(it) }
 

@@ -136,30 +136,45 @@ object Sql: Interpolator<Any, Query> {
         if (!(value is Collection<*> || value is CollectionAndType || value::class.java.isArray))
             return false
 
-        // Check that there is IN operator right before value.
-        if (!finishesWithIN(str))
+        // Check that there is IN operator right before the value.
+        val inKind = finishesWithIN(str)
+        if (inKind == InKind.None)
             return false
 
         val items = getItems(if (value is CollectionAndType) value.list else value)
 
         builder.append('(')
-        for (item in items.iterator) {
-            builder.append("?,")
-            bindParams.add(item)
-        }
-        if (builder.endsWith(',')) // Check for case of empty collection.
+        if (items.size > 0) {
+            for (item in items.iterator) {
+                builder.append("?,")
+                bindParams.add(item)
+            }
             builder.deleteCharAt(builder.length - 1) // Remove trailing comma
+        } else if (inKind == InKind.In)
+            builder.append("NULL") // column IN (NULL) → matches nothing
+        // For NOT IN condition "NOT IN ()" will be generated, what will produce SQL error.
+        // It's documented that for such case $If condition should be added as we can't handle it universally.
         builder.append(')')
         return true
     }
 
-    private fun finishesWithIN(str: String): Boolean {
-        var i = str.length
-        while (i > 0)
-            if (!str[--i].isWhitespace())
-                return i >= 2 && str[i - 2].isWhitespace() &&
-                        (str[i - 1] == 'I' || str[i - 1] == 'i') &&
-                        (str[i] == 'N' || str[i] == 'n')
-        return false
+    private fun finishesWithIN(str: String): InKind {
+        var i = str.length - 1
+        while (i > 0 && str[i].isWhitespace()) i-- // Skip whitespaces between IN and ()
+
+        val inPresents = i >= 2 && str[i - 2].isWhitespace() &&
+                (str[i - 1] == 'I' || str[i - 1] == 'i') &&
+                (str[i] == 'N' || str[i] == 'n')
+        if (!inPresents) return InKind.None
+
+        i -= 2
+        while (i > 0 && str[i].isWhitespace()) i-- // Skip whitespaces between NOT and IN
+
+        return if (i >= 3 && str[i - 3].isWhitespace() &&
+                (str[i - 2] == 'N' || str[i - 2] == 'n') &&
+                (str[i - 1] == 'O' || str[i - 1] == 'o') &&
+                (str[i] == 'T' || str[i] == 't')) InKind.NotIn else InKind.In
     }
+
+    private enum class InKind { In, NotIn, None }
 }
