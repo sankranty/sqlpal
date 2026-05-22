@@ -376,10 +376,7 @@ class Query @PublishedApi internal constructor(
             // Kotlin unsigned arrays (e.g. UIntArray) are not recognized by JDBC,
             // thus considering that they are value classes, get their underlying value that is normal array.
             // Check for if before check for Collection as unsigned arrays implement Collection interface.
-            val array = if (getUnsignedArrayType(value) != null) value.javaClass.declaredFields.first().run{
-                isAccessible = true
-                get(value)
-            }
+            var array = if (getUnsignedArrayType(value) != null) unwrapValueClass(value)
             // JDBC supports arrays but not collections, so if it's a Collection, then convert it to Array.
             // Array must be of certain type, not array of Any, otherwise database driver would not be able
             // to figure out to what SQL type map it to. So create it via reflection to explicitly specify type.

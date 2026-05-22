@@ -115,12 +115,20 @@ internal fun addValueToBindParams(value: Any?, classType: KClass<*>, p: KPropert
                             "is not of primitive type and thus can't be mapped to any SQL type. " +
                             "Only Collections of primitive types are supported " +
                             "and generic type must be specified explicitly, not List<*> or Map<Any, Any>.")
-        }
-        CollectionAndType(value, componentType)
+            CollectionAndType(value, componentType)
+        } else
+            // Due to bug in Kotlin reflection, when a property of unsigned array type has null value,
+            // then getting it via memberProperties returns wrapper object instead of null,
+            // so check underlying value for null.
+            if (unwrapValueClass(value) != null) CollectionAndType(value, componentType) else null
     } else
         value
     bindParams.add(paramValue)
 }
+
+// Returns value of the first found field of the class of provided object, that for value classes is the only field.
+internal fun unwrapValueClass(value: Any) =
+    value.javaClass.declaredFields.first().run { isAccessible = true; get(value) }
 
 @PublishedApi
 internal fun <T: Any> getConstructor(type: KClass<T>): KFunction<T> {
