@@ -284,24 +284,33 @@ class Query @PublishedApi internal constructor(
      * @param action to execute with [PreparedStatement].
      * @return number of rows affected. */
     fun <T> doAction(con: Connection?, action: (PreparedStatement) -> T) =
-        doAction(con, null, false, action)
+        doAction(con, null, action = action)
 
     /** Runs specified action with [PreparedStatement] and specified columns which values should be returned.
      * @param con If specified, then command is executed on it, and it is not closed after use.
      * Otherwise, connection is obtained from pool and released after use.
-     * @param autoGenColumns array where to store values from auto-generated columns.
+     * @param generatedColumns array of column names for witch to return values after execution.
+     * @param requestGeneratedColumns true to request database to return any changed values after INSERT or UPDATE.
+     * Value is ignored if [generatedColumns] is not null.
      * @param isBatch if true, then bind parameters are not set from [bindParams] as batch assumes multiple statements.
      * @param action to execute with [PreparedStatement].
      * @return number of rows affected. */
-    fun <T> doAction(con: Connection?, autoGenColumns: Array<String>?, isBatch: Boolean = false, action: (PreparedStatement) -> T) =
+    fun <T> doAction(con: Connection?, generatedColumns: Array<String>?,
+                     requestGeneratedColumns: Boolean = false,
+                     isBatch: Boolean = false, action: (PreparedStatement) -> T) =
         if (con != null)
-            doActionOnConnection(con, autoGenColumns, isBatch, action)
+            doActionOnConnection(con, generatedColumns, requestGeneratedColumns, isBatch, action)
         else
-            SqlPal.withConnection { doActionOnConnection(it, autoGenColumns, isBatch, action) }
+            SqlPal.withConnection { doActionOnConnection(it, generatedColumns, requestGeneratedColumns, isBatch, action) }
 
-    private inline fun <T> doActionOnConnection(con: Connection, autoGenColumns: Array<String>?,
+    private inline fun <T> doActionOnConnection(con: Connection, generatedColumns: Array<String>?,
+                                                requestGeneratedColumns: Boolean,
                                                 isBatch: Boolean, action: (PreparedStatement) -> T) =
-        con.prepareStatement(sql, autoGenColumns).use {
+        when {
+            generatedColumns != null -> con.prepareStatement(sql, generatedColumns)
+            requestGeneratedColumns -> con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)
+            else -> con.prepareStatement(sql)
+        }.use {
             // For batch, params will be set inside action.
             if (!isBatch) setBindParams(it)
             action(it)

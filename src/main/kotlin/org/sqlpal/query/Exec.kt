@@ -37,7 +37,7 @@ fun execWithResults(query: Query, autoGenColumns: Array<String>? = null, con: Co
  * @return value from the first column of the first row of returned result set, or null if result set is empty.
  * Note that if RETURNING clause was not specified in the query,
  * then driver returns all columns, and first one can be any of them. */
-fun execWithResult(query: Query, con: Connection? = null) = query.doAction(con) { stmt ->
+fun execWithResult(query: Query, con: Connection? = null) = query.doAction(con, null, true) { stmt ->
     if (stmt.executeUpdate() == 0) null
     else stmt.generatedKeys.use { if (!it.next()) null else it.getObject(1) }
 }
