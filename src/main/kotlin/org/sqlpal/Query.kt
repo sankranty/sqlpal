@@ -362,6 +362,16 @@ class Query @PublishedApi internal constructor(
                 "but is not wrapped with the CollectionAndType object, what indicates a bug or incorrect use of SqlPal.")
 
     private fun setArray(statement: PreparedStatement, index: Int, value: Any, componentType: KClass<out Any>?) {
+        fun Any.toBoxedArray(): Any = when (this) {
+            is IntArray     -> toTypedArray()
+            is LongArray    -> toTypedArray()
+            is ShortArray   -> toTypedArray()
+            is FloatArray   -> toTypedArray()
+            is DoubleArray  -> toTypedArray()
+            is BooleanArray -> toTypedArray()
+            is CharArray    -> toTypedArray()
+            else            -> this
+        }
         componentType ?: throwNotWrapped(index)
 
         if (SqlPal.storeAsJson(value is ByteArray)) {
@@ -384,6 +394,10 @@ class Query @PublishedApi internal constructor(
             // to figure out to what SQL type map it to. So create it via reflection to explicitly specify type.
             else if (value is Collection<*>) value.toArrayOfType(componentType)
             else value
+
+            // Unlike Postgres, H2 driver supports only boxed arrays, so box it if it's unboxed array.
+            if (!statement.isPostgres) array = array.toBoxedArray()
+
             // Don't specify Types.ARRAY for the setObject, as if it's a ByteArray,
             // then it should be stored as a binary object, not as an array.
             statement.setObject(index, array)
