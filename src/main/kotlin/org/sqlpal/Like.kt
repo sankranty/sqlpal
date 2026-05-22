@@ -9,7 +9,7 @@ class Like (
     private val text: String,
     private val closingWildcard: Char?,
 ) {
-    private val escapeChar = '\\'
+    private val escapeChar = '!'
     private val processChar: (Char) -> Char = if (ignoreCase) { c -> c.lowercaseChar() } else { c -> c }
 
     internal fun appendLikeCondition(sb: StringBuilder) {
