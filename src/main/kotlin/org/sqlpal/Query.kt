@@ -382,7 +382,7 @@ class Query @PublishedApi internal constructor(
 
     private fun setEnumArray(statement: PreparedStatement, index: Int, items: Items, componentType: KClass<*>) {
         // Convert enum values to strings.
-        val array = Array(items.size) { (items.iterator.next() as Enum<*>).name }
+        val array = Array(items.size) { (items.iterator.next() as Enum<*>?)?.name }
 
         val con = statement.connection
         if (SqlPal.useEnumArrays && con.metaData.databaseProductName.lowercase() == "postgresql") {
