@@ -146,7 +146,7 @@ class Query @PublishedApi internal constructor(
                             "but generated keys for requested columns were not returned by driver/database.")
                     val className = entity::class.qualifiedName
                     for (i in 1..rs.metaData.columnCount) {
-                        val prop = autoGenColumns[rs.metaData.getColumnLabel(i)] ?: continue
+                        val prop = autoGenColumns[rs.metaData.getColumnLabel(i).lowercase()] ?: continue
                         val (read, _, type) = createReader(prop.returnType, i, null, className)
                         val value = rs.read(i, type)
                         prop.set(entity, value)
