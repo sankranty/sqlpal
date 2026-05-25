@@ -213,11 +213,11 @@ class Query @PublishedApi internal constructor(
                     if (isList)
                         if (jsonMapper != null) { i, _ -> jsonMapper.parseList(getString(i)) }
                         else if (valueType.isEnum) ResultSet::readEnumList
-                        else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toList()
+                        else fun ResultSet.(i, _) = readArray(i)?.toList()
                     else if (isSet)
                         if (jsonMapper != null) { i, _ -> jsonMapper.parseSet(getString(i)) }
                         else if (valueType.isEnum) ResultSet::readEnumSet
-                        else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toSet()
+                        else fun ResultSet.(i, _) = readArray(i)?.toSet()
                     else // It's array
                         if (jsonMapper != null) { i, _ -> jsonMapper.parseList(getString(i))?.toArrayOfType(type) }
                         else if (valueType.isEnum) ResultSet::readEnumArray
@@ -229,7 +229,7 @@ class Query @PublishedApi internal constructor(
                         // Also, only Postgres returns typed arrays. H2 returns Array<Any>, what is handled in next branch.
                         else if (type.arguments.isNotEmpty() && stmt.isPostgres) fun ResultSet.(i, _) = getArray(i)?.array
                         // If type is unboxed array then convert Array<*> to unboxed array
-                        else fun ResultSet.(i, _) = (getArray(i)?.array as Array<*>?)?.toArrayOfType(type)
+                        else fun ResultSet.(i, _) = readArray(i)?.toArrayOfType(type)
                 }
                 else if (type.kClass?.isSubclassOf(Map::class) == true) {
                     val jsonMapper = JsonMapper(colIndex, type.arguments[1].type!!, type.arguments[0].type!!);
@@ -418,6 +418,8 @@ class Query @PublishedApi internal constructor(
     private val PreparedStatement.isPostgres get() =
         connection.metaData.databaseProductName.lowercase() == "postgresql"
 }
+
+private fun ResultSet.readArray(colIndex: Int) = getArray(colIndex)?.array as Array<*>?
 
 @Suppress("UNCHECKED_CAST")
 private fun ResultSet.readEnumArray(colIndex: Int, enumType: KType): Array<Enum<*>>?
