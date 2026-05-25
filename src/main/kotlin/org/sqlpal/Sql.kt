@@ -29,6 +29,12 @@ class CollectionAndType (val list: Any, val componentType: KClass<*>)
 inline operator fun <reified T> Collection<T>?.unaryMinus() =
     if (this != null) CollectionAndType(this, T::class) else null
 
+/** Wraps [Map] with an object that also contains information about generic type of the values.
+ * It's necessary to handle empty maps, as unlike [Array], empty [Map] does not contain
+ * information about its generic type, what makes impossible to map it to appropriate SQL type. */
+inline operator fun <reified K, reified V> Map<K, V>?.unaryMinus() =
+    if (this != null) CollectionAndType(this, V::class) else null
+
 /** Allows to use more compact -"..." syntax instead of Sql("...") syntax. */
 @InterpolatorFunction<Sql>(Sql::class)
 operator fun String.unaryMinus(): Query = interpolatorBody()
@@ -89,9 +95,9 @@ object Sql: Interpolator<Any, Query> {
             }
             else if (!handleInWithCollection(params[i], strings[i], builder, bindParams))
             {
-                if (params[i] is Collection<*>) throw SqlInterpolatorException(
-                    "Parameters of the Collection type, specified in the query, must be prefixed with the '-'. " +
-                        "Unary minus operator is overloaded by SqlPal and converts Collection to typed Array." +
+                if (params[i] is Collection<*> || params[i] is Map<*, *>) throw SqlInterpolatorException(
+                    "Parameter of the Collection or the Map type, specified in the query, must be prefixed with the '-'. " +
+                        "Unary minus operator is overloaded by SqlPal and captures generic type." +
                         "It's necessary to handle empty Collections, because unlike Array, empty Collection does not contain " +
                         "information about its generic type, what makes impossible to map it to appropriate SQL type." +
                         "The only case when '-' prefix is not required, is when collection is specified after IN operator, " +
