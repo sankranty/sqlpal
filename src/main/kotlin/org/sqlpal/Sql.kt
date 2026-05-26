@@ -13,43 +13,43 @@ object If
  * otherwise continue normally. See [Sql] for details. */
 object Else
 
-/** Used in [Sql] string and means - inline value of next param directly into the string
+/** Used in [Sql] string and means - inline the value of the next parameter directly into the string
  * instead of adding it as a binding parameter. See [Sql] for details. */
 object I
 
 /** Exception that signals incorrect placement of the specified parameters. */
 class SqlInterpolatorException(message: String) : Exception(message)
 
-/** Wrapper for the [Collection] that also contains information about generic type of the [Collection]. */
+/** Wrapper for the [Collection] that also contains information about the generic type of the [Collection]. */
 class CollectionAndType (val list: Any, val componentType: KClass<*>)
 
-/** Wraps [Collection] with an object that also contains information about generic type of the [Collection].
+/** Wraps [Collection] with an object that also contains information about the generic type of the [Collection].
  * It's necessary to handle empty collections, as unlike [Array], empty [Collection] does not contain
- * information about its generic type, what makes impossible to map it to appropriate SQL type. */
+ * information about its generic type, which makes it impossible to map it to an appropriate SQL type. */
 inline operator fun <reified T> Collection<T>?.unaryMinus() =
     if (this != null) CollectionAndType(this, T::class) else null
 
-/** Wraps [Map] with an object that also contains information about generic type of the values.
+/** Wraps [Map] with an object that also contains information about generic the type of the values.
  * It's necessary to handle empty maps, as unlike [Array], empty [Map] does not contain
- * information about its generic type, what makes impossible to map it to appropriate SQL type. */
+ * information about its generic type, which makes it impossible to map it to an appropriate SQL type. */
 inline operator fun <reified K, reified V> Map<K, V>?.unaryMinus() =
     if (this != null) CollectionAndType(this, V::class) else null
 
-/** Allows to use more compact -"..." syntax instead of Sql("...") syntax. */
+/** Allows using a more compact -"..." syntax instead of Sql("...") syntax. */
 @InterpolatorFunction<Sql>(Sql::class)
 operator fun String.unaryMinus(): Query = interpolatorBody()
 
-/** Stores interpolated values from the provided String as a bind parameters
- * and returns [Query] object that can be used to execute provided query.
+/** Stores interpolated values from the provided String as bind parameters
+ * and returns [Query] object that can be used to execute the provided query.
  * It can be used with Sql("...") or Sql("""...""") syntax, as well as with more compact -"..." or -"""...""" syntax.
  *
  * To include part of the query conditionally use $[If] $condition where 'condition' is boolean variable.
- * If 'condition' is false, then the rest of the content to the line break is not included.
- * For several mutually exclusive conditions use $[Else]$[If] and $[Else] which also have scope upto the line break.
+ * If 'condition' is false, then the rest of the content up to the line break is not included.
+ * For several mutually exclusive conditions use $[Else]$[If] and $[Else] which also have scope up to the line break.
  *
- * To inline value directly into the query string (instead of adding it as a bind parameter), use $[I]$ instead of $.
+ * To inline a value directly into the query string (instead of adding it as a bind parameter), use $[I]$ instead of $.
  *
- * For common LIKE conditions you can use next convenience functions for more compact syntax:
+ * For common LIKE conditions you can use the following convenience functions for more compact syntax:
  * - [includes] and [includesIgnoreCase],
  * - [beginsWith] and [beginsWithIgnoreCase],
  * - [finishesWith] and [finishesWithIgnoreCase], e.g.:
@@ -65,7 +65,7 @@ object Sql: Interpolator<Any, Query> {
         val builder = StringBuilder()
         val bindParams = mutableListOf<Any?>()
         var i = 0 // Index of parameter and string before it.
-        var isTrue = false // To know If condition in the Else block.
+        var isTrue = false // Signals for the Else block that there is true If condition above.
 
         builder.append(strings[i]) // There is always a string before the first parameter, even when the parameter is at the very beginning.
         while (i < params.count()) {
@@ -96,11 +96,11 @@ object Sql: Interpolator<Any, Query> {
             else if (!handleInWithCollection(params[i], strings[i], builder, bindParams))
             {
                 if (params[i] is Collection<*> || params[i] is Map<*, *>) throw SqlInterpolatorException(
-                    "Parameter of the Collection or the Map type, specified in the query, must be prefixed with the '-'. " +
-                        "Unary minus operator is overloaded by SqlPal and captures generic type." +
+                    "Parameter of Collection or Map type, specified in the query, must be prefixed with the '-'. " +
+                        "Unary minus operator is overloaded by SqlPal and captures the generic type." +
                         "It's necessary to handle empty Collections, because unlike Array, empty Collection does not contain " +
-                        "information about its generic type, what makes impossible to map it to appropriate SQL type." +
-                        "The only case when '-' prefix is not required, is when collection is specified after IN operator, " +
+                        "information about its generic type, which makes it impossible to map it to an appropriate SQL type." +
+                        "The only case when '-' prefix is not required is when collection is specified after IN operator, " +
                         "as collection is unfolded into values in this case.")
                 builder.append('?')
                 bindParams.add(params[i])
@@ -113,14 +113,14 @@ object Sql: Interpolator<Any, Query> {
 
     private fun paramValueIsTrue(paramIndex: Int, params: List<Any>): Boolean {
         if (paramIndex >= params.count())
-            throw SqlInterpolatorException("'If' parameter can't be the last one. Add boolean parameter right after it.")
+            throw SqlInterpolatorException("'If' parameter can't be the last one. Add a Boolean parameter right after it.")
         if (params[paramIndex] !is Boolean)
             throw SqlInterpolatorException("Next parameter after the 'If' must be of Boolean type.")
 
         return (params[paramIndex] as Boolean)
     }
 
-    // Looks for string with line break starting from the string next to 'from' index.
+    // Looks for string with line break starting from the string after the 'from' index.
     // If found, then part of the string after line break is appended to StringBuilder.
     // Returns index of the string that contains line break, or index of the last string if no line break found.
     private fun skipToLineBreakAndAppendRestOfString(from: Int, strings: List<String>, builder: StringBuilder): Int {
@@ -158,8 +158,8 @@ object Sql: Interpolator<Any, Query> {
             builder.deleteCharAt(builder.length - 1) // Remove trailing comma
         } else if (inKind == InKind.In)
             builder.append("NULL") // column IN (NULL) → matches nothing
-        // For NOT IN condition "NOT IN ()" will be generated, what will produce SQL error.
-        // It's documented that for such case $If condition should be added as we can't handle it universally.
+        // For NOT IN condition "NOT IN ()" will be generated, which will produce an SQL error.
+        // It's documented that for such a case $If condition should be added because we cannot handle it universally.
         builder.append(')')
         return true
     }
