@@ -16,7 +16,7 @@ plugins {
 }
 
 dependencies {
-    implementation("org.sqlpal:sqlpal:1.0.5")
+    implementation("org.sqlpal:sqlpal:1.0.6")
 }
 ```
 And most of the operations are done in a single line (no need to manually map bind parameters):
@@ -164,7 +164,8 @@ SqlPal is DBMS agnostic. It works with any database that provides a JDBC driver.
 * BigDecimal and Currency
 * Enums (are converted to varchar if the database does not support enums)
 * Blob, Clob and SQLXML
-* List, Set, Array and unboxed arrays (e.g. IntArray). All can be stored as database arrays if the database supports arrays, or as JSON.
+* List, Set, Array, unboxed arrays (e.g. IntArray) and Kotlin unsigned arrays (e.g. UIntArray). 
+All can be stored as database arrays if the database supports arrays, or as JSON.
 * ByteArray (mapped to BLOB)
 * Map (stored as JSON string)
 * UUID
@@ -192,10 +193,15 @@ but you can set `SqlPal.convertNamesToSnakeCase` to `false` if names in database
 
 Also, the `@SqlName` annotation can be used to specify the name explicitly.
 
-### Support for collections and arrays
+### Support for collections, arrays and maps
 
-SqlPal supports lists, sets, arrays and unboxed arrays (ByteArray, IntArray, etc.) both as object properties 
-and as query parameters, including support for `enum` values.
+SqlPal supports:
+* lists, sets and arrays, including support for `enum` values
+* unboxed arrays (ByteArray, IntArray, etc.) 
+* Kotlin unsigned arrays (UByteArray, UIntArray, etc.) 
+* maps (stored as JSON string)
+
+both as object properties and as query parameters.
 
 When `List<>` or `Set<>` is specified as a query parameter it must be prefixed with the `-`.
 Unary minus operator is overloaded by SqlPal and extracts the generic type of the collection.
@@ -209,23 +215,28 @@ about its generic type at runtime, which makes it impossible to map an empty lis
     var busyPeople = select<Person>(-"hobbies = ${-noHobbies} ORDER BY name")
 ```
 
-SqlPal has embedded support for `IN` operator. When list, set or array is specified after `IN` it is unfolded into values 
-and each value is placed as a binding parameter, and `IN (?, ?, ?)` is automatically generated.
+SqlPal has embedded support for `IN / NOT IN` operator. When list, set or array is specified after `IN` it is 
+unfolded into values and each value is placed as a binding parameter, and `IN (?, ?, ?)` is automatically generated.
 Also, in this case `-` prefix for list or set is not required:
 ```kotlin
     val ids = listOf(1, 2, 3)
     var leaders = select<Person>(-"id IN $ids ORDER BY name")
 ```
+Note for IN with an empty collection / array:
+* For IN condition - `IN (NULL)` will be generated, that matches nothing.
+* For NOT IN condition - `NOT IN ()` will be generated, producing invalid SQL.
+If this case needs to be covered, add `$If ${list.isEmpty()}` to exclude the whole condition.
 
-Maps are always read and stored as JSON string:
+Maps are read and stored as JSON string:
 ```kotlin
     class Tournament(val title: String, val participants: Map<String, Int>)
     
     val tournament = Tournament("Tennis", mapOf("Mike" to 1, "Jane" to 2, "Bob" to 3))
     insert(tournament) // participants Map is stored as {"Mike":1,"Jane":2,"Bob":3}
-    val list = select<Tournament>(-"1=1") // JSON is parsed back into the participants Map.
+
+    var list = select<Tournament>(-"1=1") // JSON is parsed back into the participants Map.
+    list = select<Tournament>(-"participants = ${-tournament.participants}") // Map can be specified as a query parameter as well.
 ```
-Maps cannot be specified as a parameter in a query.
 
 ### Dynamic queries
 
@@ -259,6 +270,22 @@ To inline something directly into the query string (instead of treating it as a 
 val sortColumn = if (sortByName) "name" else "creation_date"
 read<Person>(-"SELECT * FROM person ORDER BY $I$sortColumn")
 ```
+
+For `LIKE` conditions there are convenience methods that automatically add wildcards, escape them from the input
+and cast column and input to lowercase if case-insensitive comparison is required.
+```kotlin
+read<Person>(-"SELECT * FROM person WHERE ${"name" beginsWithIgnoreCase "Mic"}")
+```
+Full list of methods:
+- `includes`
+- `includesIgoreCase`
+- `beginsWith`
+- `beginsWithIgoreCase`
+- `finishesWith`
+- `finishesWithIgoreCase`
+
+Considering that these are extension methods for the `String`, names are intentionally different 
+from standard string utility functions.
 
 ### Select
 
