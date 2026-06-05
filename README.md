@@ -2,7 +2,7 @@
 
 Ultralight ORM for Kotlin.
 
-* laconic - no boilerplate code
+* concise - no boilerplate code
 * fast - near raw JDBC performance
 * flexible - all the strength of SQL + dynamic building of queries
 
@@ -77,7 +77,7 @@ fun main() {
 
 ## Why another ORM?
 
-Because none of the numerous ORMs is at the same time laconic, fast and flexible. Common approaches are:
+Because none of the numerous ORMs is simultaneously concise, fast and flexible. Common approaches are:
 
 * **DSL that is transformed to SQL by the framework.** 
 It's JPQL/HQL in JPA/Hibernate, Kotlin Exposed, JOOQ and QueryDSL.
@@ -148,8 +148,8 @@ or if you for some reason don't want the Hikari connection pool to be used.
 
 All SqlPal methods allow you to optionally specify a connection. For such a call, no setup is needed.
 
-This is suitable for cases where SqlPal is used alongside another database library, and 
-for instance, you need to use both of them within a single transaction.
+This is suitable for cases where SqlPal is used alongside another database library, 
+for example, when you need to use both within a single transaction.
 
 ## Features
 
@@ -271,8 +271,8 @@ val sortColumn = if (sortByName) "name" else "creation_date"
 read<Person>(-"SELECT * FROM person ORDER BY $I$sortColumn")
 ```
 
-For `LIKE` conditions there are convenience methods that automatically add wildcards, escape them from the input
-and cast column and input to lowercase if case-insensitive comparison is required.
+For `LIKE` conditions there are convenience methods that automatically add wildcards, escape special characters 
+in the input and cast column and input to lowercase if case-insensitive comparison is required.
 ```kotlin
 read<Person>(-"SELECT * FROM person WHERE ${"name" beginsWithIgnoreCase "Mic"}")
 ```
@@ -337,7 +337,8 @@ Methods to get values of generated columns:
 ### Customization
 
 By default, SqlPal stores lists, sets and arrays as database arrays if database supports columns of array type,
-and as JSON string if it does not. If other behaviour is required, then set `SqlPal.storeArraysAs` to the appropriate value.
+and as JSON string if it does not. 
+If a different behaviour is required, then set `SqlPal.storeArraysAs` to the appropriate value.
 
 If the database supports arrays of enums, then SqlPal will store lists, sets and arrays of enums as database arrays of enums.
 If that is not desired, then set `SqlPal.useEnumArrays` to `false`, to store enums as strings.
@@ -393,5 +394,5 @@ fun readPerson(r: ResultSet) = Person(
 )
 ```
 This approach is a bit faster, as it does not use reflection to create objects, thus you get the performance of raw JDBC.
-But for most queries that execute in about a few milliseconds, the difference will be within few presents or even not noticeable. 
+But for most queries that execute in a few milliseconds, the difference will be within a few present or even unnoticeable. 
 So it makes sense only for queries that are executed on the microsecond scale or when you need custom reading logic.
