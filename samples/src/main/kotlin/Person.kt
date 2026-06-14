@@ -40,6 +40,7 @@ data class Person3 (
     var gen: Gender = Gender.female
 ) : Base()
 
+@OptIn(ExperimentalUnsignedTypes::class)
 data class PersonJ (
     @Id @AutoGen
     var id: Long? = null,
@@ -49,7 +50,27 @@ data class PersonJ (
     var edu: List<Education>,
     var edus: Set<Education>?,
     var edua: Array<Education>,
-    var relations: Map<Education?, Boolean?>?
+    var relations: Map<Education?, Boolean?>?,
+    var numUByte: UByteArray? = null,
+    var numUShort: UShortArray? = null
+)
+data class PersonB (
+    var name: String,
+    var bin: ByteArray? = null,
+    var large: ByteArray? = null,
+    @Id @AutoGen
+    var id: Long? = null,
+)
+
+@OptIn(ExperimentalUnsignedTypes::class)
+data class PersonU (
+    var name: String,
+    var num: UInt,
+    var num2: UByte? = null,
+    var arr: ULongArray? = null,
+    var arr2: UByteArray,
+    @Id @AutoGen
+    var id: Long? = null,
 )
 
 data class Pal (

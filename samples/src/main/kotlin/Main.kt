@@ -36,10 +36,13 @@ suspend fun main(args: Array<String>)
         args.contains("where-in") -> whereIn()
         args.contains("if-else") -> ifElse()
         args.contains("point") -> point()
+        args.contains("blob") -> blob()
+        args.contains("unsigned") -> unsigned()
         args.contains("gen") -> insert(args.contains("big"))
         else -> select(args.contains("prep"))
     }
 }
+
 object PointMapper : ValueMapper {
     private val reader = WKBReader()
     private val writer = WKBWriter()
@@ -58,6 +61,21 @@ fun point() {
     val location = Location(GeometryFactory().createPoint(Coordinate(30.1, 60.3)))
     insert(location)
     read<Location>(-"SELECT id, ST_AsBinary(point) as point FROM location").forEach { println(it) }
+}
+
+fun blob() {
+    val p = PersonB("Mike", byteArrayOf(33, 35, 112), null)
+    transaction { insert(p, it) }
+    select<PersonB>(-"true").forEach { println(it) }
+}
+
+@OptIn(ExperimentalUnsignedTypes::class)
+fun unsigned() {
+    var p = PersonU("Mike", 40_000u, 220u, ulongArrayOf(10u, 20u), ubyteArrayOf(189u, 176u))
+    insert(p)
+    p = PersonU("Nina", 10_000u, 227u, null, ubyteArrayOf(189u, 176u))
+    insert(p)
+    select<PersonU>(-"num = ${40_000u} or num2 = ${p.num2}").forEach { println(it) }
 }
 
 fun ifElse() {
@@ -126,23 +144,36 @@ fun whereIn() {
     select<Person3>(-"edu = ${-edu}").forEach { println(it) }
 }
 
+@OptIn(ExperimentalUnsignedTypes::class)
 fun json() {
     SqlPal.storeArraysAs = ArrayStorageType.JsonExceptByteArray
 
-    val p = PersonJ(name = "Katerina",
+    var p = PersonJ(name = "Katerina",
         num = arrayOf(12, 11, 27),
         numArr = IntArray(4) { it * 3 },
         edu = listOf(Education.high, Education.middle),
         edus = setOf(Education.high, Education.school),
         edua = arrayOf(Education.high, Education.scienceDegree),
-        relations = mapOf(null to false, Education.school to true, Education.high to true, Education.middle to null)
+        relations = mapOf(null to false, Education.school to true, Education.high to true, Education.middle to null),
+        numUByte = ubyteArrayOf(255u, 231u),
+        numUShort = ushortArrayOf(65_000u)
     )
     insert(p)
 
     update(-"id >= ${44}", PersonJ::name to "Ekaterina")
 
-    val persons = select<PersonJ>(-"edu LIKE '%high%'")
+    val persons = select<PersonJ>(-"${"edu" includes "high"}")
     persons.forEach { println(it) }
+
+    p = PersonJ(name = "Katerina",
+        edu = listOf(Education.high, Education.middle, Education.scienceDegree),
+        edus = setOf(Education.high, Education.school),
+        edua = arrayOf(Education.high, Education.scienceDegree),
+        relations = mapOf(null to null, Education.high to true, Education.scienceDegree to true),
+    )
+    insert(p)
+    println("\nPersons with match by relations map content:")
+    select<PersonJ>(-"relations = ${-p.relations}").forEach { println(it) }
 }
 
 fun ins() {
@@ -198,11 +229,10 @@ fun upd() {
     p2.height = 175
     update(p2, listOf("height" to p2.height))
 
-    val name = "Katerina"
-    val p = Person2(name = name, gender = Gender.female, birthDate = LocalDate.now(), education = Education.high,
-        edu = listOf(Education.high, Education.middle))
-
     transaction {
+        val name = "Katerina"
+        val p = Person2(name = name, gender = Gender.female, birthDate = LocalDate.now(), education = Education.high,
+            edu = listOf(Education.high, Education.middle))
         p.work = "Economist"
         update(p, it, -"name = $name")
 
