@@ -15,8 +15,8 @@ data class Person (
     var height: Int = 0,
     var city: String = "",
 
-    var x: Int,
-    var y: Int,
+    //var x: Int,
+    //var y: Int,
     var activityDate: LocalDate = LocalDate.MIN,
     //var edu: List<Education>?
 )

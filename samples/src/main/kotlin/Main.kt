@@ -10,12 +10,11 @@ import org.locationtech.jts.io.WKBReader
 import org.locationtech.jts.io.WKBWriter
 import java.sql.PreparedStatement
 import java.sql.ResultSet
-import java.time.Duration
-import java.time.LocalTime
 import kotlin.math.ceil
 import kotlin.math.cos
 import org.sqlpal.*
 import org.sqlpal.query.*
+import kotlin.math.round
 import kotlin.reflect.KClass
 
 suspend fun main(args: Array<String>)
@@ -26,9 +25,10 @@ suspend fun main(args: Array<String>)
     SqlPal.addTypeMapper(Point::class, PointMapper)
 
     when {
+        //args.contains("timings") -> selectWithTimings()
         args.contains("ins") -> ins3()
         args.contains("ins-many") -> insMany()
-        args.contains("upd") -> upd3()
+        args.contains("upd") -> upd()
         args.contains("find") -> find()
         args.contains("sel") -> sel()
         args.contains("coll") -> collections()
@@ -39,7 +39,7 @@ suspend fun main(args: Array<String>)
         args.contains("blob") -> blob()
         args.contains("unsigned") -> unsigned()
         args.contains("gen") -> insert(args.contains("big"))
-        else -> select(args.contains("prep"))
+        else -> select(args.contains("prep"), args)
     }
 }
 
@@ -307,36 +307,156 @@ fun collections() {
     println("Select Person3 with filter by empty list")
     educations = emptyList()
     select<Person3>(-"num2 = $num and edu2 = ${-educations}").forEach { println(it) }
-
 }
 
-var selectedRowsCount = arrayOf(0 to 0.0, 0 to 0.0, 0 to 0.0, 0 to 0.0)
+var selectedRowsCount = Array(0) { 0 to 0.0 }
 
-suspend fun select(prepare: Boolean) {
-    val from = LocalTime.now()
+suspend fun select(prepare: Boolean, args: Array<String>) {
+    val threadCount = args.indexOf("parallel").let { if (it >= 0) args[it + 1].toInt() else 4 }
+
+    // Warm up (otherwise result will be incorrect as it will include JIT compilation and other stuff).
+    selectedRowsCount = Array(2) { 0 to 0.0 }
     coroutineScope {
-        launch { selectLoop(0, prepare) }
-        launch { selectLoop(1, prepare) }
-        launch { selectLoop(2, prepare) }
-        launch { selectLoop(3, prepare) }
+        launch { selectLoopWithCoords(0, prepare, 1) }
+        launch { selectLoopWithCoords(1, prepare, 1) }
     }
-    val dur = Duration.between(from, LocalTime.now())
-    val durInSeconds = dur.seconds + dur.nano / 1_000_000_000.0
-    var rowsRead = 0
-    var durA = 0.0
-    var durB = 0.0
-    for ((i, p) in selectedRowsCount.withIndex()) {
-        println("Thread $i run for ${p.second} seconds")
-        rowsRead += p.first
-        if (i % 2 == 0) durA += p.second else durB += p.second
+
+    do {
+        selectedRowsCount = Array(threadCount) { 0 to 0.0 }
+        val durInSeconds = seconds {
+            coroutineScope {
+                repeat(threadCount) { launch { selectLoopWithCoords(it, prepare) } }
+            }
+        }
+        var rowsRead = 0
+        var durA = 0.0
+        var durB = 0.0
+        for ((i, p) in selectedRowsCount.withIndex()) {
+            rowsRead += p.first
+            if (threadCount > 1) {
+                if (i % 2 == 0) durA += p.second
+                else durB += p.second
+                println("Thread $i run for ${p.second} seconds")
+            }
+        }
+        if (threadCount > 1) {
+            val diff = (durB - durA) / 2
+            println("Difference is $diff seconds, ${"%.2f".format(diff * 100 / (durA / 2))} %")
+        }
+        println("\nJDBC select for $rowsRead rows is done in $durInSeconds seconds\n")
+    } while (readln().isBlank())
+}
+/*
+suspend fun selectWithTimings() {
+    // Warm up (otherwise result will be incorrect as it will include JIT compilation and other stuff).
+    coroutineScope {
+        launch { selectLoop(0, false, 1) }
+        launch { selectLoop(1, false, 1) }
     }
-    println("Difference is ${(durB - durA) / 2} seconds")
-    println("\nJDBC select for $rowsRead rows is done in $durInSeconds seconds\n")
+    // Reset values to zero as they were changed during warmup.
+    prepareSql = 0L
+    getConnection = 0L
+    prepareStatement = 0L
+    setBindParams = 0L
+    exec = 0L
+    getColIndexes = 0L
+    getConstructor = 0L
+    getReaders = 0L
+    createArrayForValues = 0L
+    getCreateObjectAndCreateList = 0L
+    readValues = 0L
+    createEntity = 0L
+    setOptionalProperties = 0L
+    totalInQuery = 0L
+
+    var from = System.nanoTime()
+    selectLoop(1, false)
+    total = System.nanoTime() - from
+
+    println("\nSelect for ${"%,d".format(selectedRowsCount[1].first)} rows.\n")
+    printTiming("prepareSql", prepareSql)
+    printTiming("getConnection", getConnection)
+    printTiming("prepareStatement", prepareStatement)
+    printTiming("setBindParams", setBindParams)
+    println()
+
+    printTiming("exec", exec)
+    printTiming("getColIndexes", getColIndexes)
+    printTiming("getConstructor", getConstructor)
+    printTiming("getReaders", getReaders)
+    printTiming("createArrayForValues", createArrayForValues)
+    printTiming("getCreateObjectAndCreateList", getCreateObjectAndCreateList)
+    printTiming("readValues", readValues)
+    printTiming("createEntity", createEntity)
+    printTiming("setOptionalProperties", setOptionalProperties)
+    println("-----------------")
+    printTiming("Sum in Query", exec + getColIndexes + getConstructor + getReaders +
+            createArrayForValues + getCreateObjectAndCreateList + readValues + createEntity + setOptionalProperties)
+    printTiming("Total in Query", totalInQuery)
+
+    println()
+    printTiming("Total", total)
+
+    from = System.nanoTime()
+    selectLoop(0, false)
+    var totalManual = System.nanoTime() - from
+
+    from = System.nanoTime()
+    selectLoop(1, false)
+    total += System.nanoTime() - from
+
+    from = System.nanoTime()
+    selectLoop(0, false)
+    totalManual += System.nanoTime() - from
+
+    println()
+    printTiming("Auto average total", total/2, totalManual/2)
+    printTiming("Manual average total", totalManual/2, totalManual/2)
+    println()
+}
+*/
+var total = 0L
+
+fun printTiming(param: String, nanoSec: Long, totalSec: Long = total) =
+    println("${"%-28s".format(param)} - " +
+            "${"%.2f".format(nanoSec / 1_000_000_000.0)} sec  " +
+            "${"%3d".format(nanoSec * 100 / totalSec)} %")
+
+inline fun seconds(block: () -> Unit): Double {
+    val from = System.nanoTime()
+    block()
+    return round((System.nanoTime() - from) / 10_000_000.0) / 100
 }
 
+fun selectLoop(index: Int, prepare: Boolean, iterationsCount: Int = 1000) {
+    val from = System.nanoTime()
+    var rowsRead = 0
 
-fun selectLoop(index: Int, prepare: Boolean) {
-    val from = LocalTime.now()
+    for (i in 0..iterationsCount) {
+        val id = (10_000..110_000L).random()
+        val activity = LocalDate.now().minusYears(1).plusDays((1..500L).random())
+
+        val list = read<Person>(-"""
+            SELECT id, name, gender, birth_date, about, education, work, height, city, activity_date
+            FROM person
+            WHERE
+                birth_date BETWEEN ${LocalDate.of(1920, 1, 1)} AND ${LocalDate.of(2020, 12, 21)}
+                AND gender = ${Gender.female} 
+                AND activity_date <= $activity AND id < $id
+            ORDER BY
+                activity_date DESC,
+                id DESC
+            LIMIT $I${100}
+            """, 100, ::readPerson)
+
+        rowsRead += list.count()
+    }
+    val diff = (System.nanoTime() - from) / 1_000_000_000.0
+    selectedRowsCount[index] = rowsRead to diff
+}
+
+fun selectLoopWithCoords(index: Int, prepare: Boolean, iterationsCount: Int = 300) {
+    val from = System.nanoTime()
     var rowsRead = 0
 //    val sel = SelectNoPos()
 //    sel.selectLoop(index, prepare)
@@ -361,7 +481,7 @@ fun selectLoop(index: Int, prepare: Boolean) {
     val y2 = 60.01 + dy
     */
     //select = con.prepareStatement(query)
-    for (i in 0..300) {
+    for (i in 0..iterationsCount) {
         //if (!prepare)
         val apply = true
         val activity = LocalDate.now().minusYears(1).plusDays((200..500L).random())
@@ -458,8 +578,7 @@ fun selectLoop(index: Int, prepare: Boolean) {
 
         rowsRead += list.count()
     }
-    val dur = Duration.between(from, LocalTime.now())
-    val diff = dur.seconds + dur.nano / 1_000_000_000.0
+    val diff = (System.nanoTime() - from) / 1_000_000_000.0
     selectedRowsCount[index] = rowsRead to diff
 }
 
@@ -501,8 +620,8 @@ fun readPerson(res: ResultSet /*, locationReader: WKBReader, strReader: WKTReade
         res.getString("work"),
         res.getInt("height"),
         res.getString("city"),
-        res.getInt("x"),
-        res.getInt("y"),
+        //res.getInt("x"),
+        //res.getInt("y"),
         //locationReader.read(res.getBytes("location")) as Point,
         res.getDate("activity_date").toLocalDate(),
         //res.getDouble("dist"),
@@ -520,8 +639,8 @@ fun readPersonByIndex(res: ResultSet, /*, locationReader: WKBReader, strReader: 
         res.getString(7),
         res.getInt(8),
         res.getString(9),
-        res.getInt(10),
-        res.getInt(11),
+        //res.getInt(10),
+        //res.getInt(11),
         //locationReader.read(res.getBytes(10)) as Point,
         res.getDate(11).toLocalDate(),
         //emptyList()
