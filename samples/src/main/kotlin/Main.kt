@@ -26,9 +26,9 @@ suspend fun main(args: Array<String>)
 
     when {
         //args.contains("timings") -> selectWithTimings()
-        args.contains("ins") -> ins3()
+        args.contains("ins") -> insInTran()
         args.contains("ins-many") -> insMany()
-        args.contains("upd") -> upd()
+        args.contains("upd") -> updInTran()
         args.contains("find") -> find()
         args.contains("sel") -> sel()
         args.contains("coll") -> collections()
@@ -176,7 +176,7 @@ fun json() {
     select<PersonJ>(-"relations = ${-p.relations}").forEach { println(it) }
 }
 
-fun ins() {
+fun insInTran() {
     val p = Person2(name = "Katerina", gender = Gender.female, birthDate = LocalDate.now(), education = Education.high,
         edu = listOf(Education.high, Education.middle))
     transaction {
@@ -186,16 +186,15 @@ fun ins() {
     println("Inserted person ID is ${p.id} and about is ${p.about2}")
 }
 
-fun ins3() {
-    //val p = Person3(name = "Katerina", num = listOf(4, 7))
+fun insListAndArray() {
     var p = Person3(name = "Katerina", num = mutableListOf(0, 7), num2= arrayOf(7, 8),
-        edu = arrayOf(Education.high, Education.middle), edu2 = mutableListOf(Education.scienceDegree)
-    )
+        edu = arrayOf(Education.high, Education.middle), edu2 = mutableListOf(Education.scienceDegree))
     insert(p)
+
     p = Person3(name = "Katerina", num = emptyList(), num2= emptyArray(), edu = emptyArray())
     insert(p)
+
     println("Inserted person ID is ${p.id} and numbers are ${p.num}")
-    Person3::name.name
 }
 
 fun insMany() {
@@ -224,7 +223,7 @@ fun insMany() {
     println("Inserted $insertedCount rows")
 }
 
-fun upd() {
+fun updInTran() {
     val p2 = selectById<Person2>(10)
     p2.height = 175
     update(p2, listOf("height" to p2.height))
@@ -241,7 +240,7 @@ fun upd() {
     }
 }
 
-fun upd3() {
+fun updSet() {
     var p = selectById<Person3>(11)
     p.name = "Ekaterina"
     p.num = listOf(500)
@@ -458,13 +457,6 @@ fun selectLoop(index: Int, prepare: Boolean, iterationsCount: Int = 1000) {
 fun selectLoopWithCoords(index: Int, prepare: Boolean, iterationsCount: Int = 300) {
     val from = System.nanoTime()
     var rowsRead = 0
-//    val sel = SelectNoPos()
-//    sel.selectLoop(index, prepare)
-//    return
-//
-//    val d = Dynamic()
-//    d.selectLoop(index, prepare)
-//    return
 
     val dx = ceil(30_000.0 / (111_110 * cos(Math.toRadians(30.35))) * 100).toInt()
     val dy = ceil(30_000.0 / 111_320 * 100).toInt()
