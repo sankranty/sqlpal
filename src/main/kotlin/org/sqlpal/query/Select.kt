@@ -13,7 +13,39 @@ import kotlin.reflect.full.memberProperties
 //--------------------- Contains methods to perform SELECT ---------------------//
 //////////////////////////////////////////////////////////////////////////////////
 
-/** Selects a single row with the specified id, considering that:
+/** Returns true if entity with specified ID exists in the table, considering that:
+ * - the table is named as the class in accordance with [SqlPal.convertNamesToSnakeCase] option,
+ * - the columns are named as the primary constructor parameters in accordance with [SqlPal.convertNamesToSnakeCase] option,
+ * - the property that maps to the primary key column is annotated with [Id] and its column datatype is integer or long.
+ * @param id ID to look for.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
+ * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
+ * @return true if entity with specified id exists in the table, otherwise false. */
+inline fun <reified T: Any> exists(id: Long, con: Connection? = null): Boolean {
+    val idCol = colName(getIdProperty(T::class))
+    val query = "SELECT 1 FROM ${entityName(T::class)} WHERE $idCol = ?"
+    return readValueOrNull<Int>(Query(query, mutableListOf(id)), con) != null
+}
+
+/** Returns true if entity with corresponding ID exists in the table, considering that:
+ * - the table is named as the class in accordance with [SqlPal.convertNamesToSnakeCase] option,
+ * - the columns are named as the primary constructor parameters in accordance with [SqlPal.convertNamesToSnakeCase] option,
+ * - the property that maps to the primary key column is annotated with [Id] and its column datatype is integer or long.
+ * @param entity to look for. The search is performed by the value of property annotated with [Id].
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
+ * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
+ * @return true if entity with specified id exists in the table, otherwise false. */
+inline fun <reified T: Any> exists(entity: T, con: Connection? = null): Boolean {
+    val prop = getIdProperty(T::class)
+    val query = "SELECT 1 FROM ${entityName(T::class)} WHERE ${colName(prop)} = ?"
+    val bindParams = mutableListOf<Any?>()
+    addPropToBindParams(entity, prop, bindParams)
+    return readValueOrNull<Int>(Query(query, bindParams), con) != null
+}
+
+/** Selects a single row with the specified ID, considering that:
  * - the table is named as the class in accordance with [SqlPal.convertNamesToSnakeCase] option,
  * - the columns are named as the primary constructor parameters in accordance with [SqlPal.convertNamesToSnakeCase] option,
  * - the property that maps to the primary key column is annotated with [Id] and its column datatype is integer or long.
@@ -28,7 +60,7 @@ import kotlin.reflect.full.memberProperties
 inline fun <reified T: Any> selectById(id: Long, con: Connection? = null) =
     selectByIdOrNull<T>(id, con) ?: throw IllegalArgumentException("Record with ID $id was not found.")
 
-/** Selects a single row with the specified id, considering that:
+/** Selects a single row with the specified ID, considering that:
  * - the table is named as the class in accordance with [SqlPal.convertNamesToSnakeCase] option,
  * - the columns are named as the primary constructor parameters in accordance with [SqlPal.convertNamesToSnakeCase] option,
  * - the property that maps to the primary key column is annotated with [Id] and its column datatype is integer or long.

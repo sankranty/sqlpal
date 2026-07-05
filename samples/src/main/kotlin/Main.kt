@@ -277,7 +277,12 @@ fun sel() {
     val work = "Economist"
     select<Person>(-"work = $work and gender = ${Gender.female}").forEach { println("Person $it") }
 
-    select<Person>(-"id < 20 $If ${false} and gender = ${Gender.female}").forEach { println("Person $it") }
+    println("\nPersons with ID > 20")
+    val persons = select<Person>(-"id < 20 $If ${false} and gender = ${Gender.female}")
+    persons.forEach { println("Person $it") }
+
+    println("Person with ID 1 exists: " + exists<Person>(1))
+    println("First person in the list exists: " + exists(persons[0]))
 }
 
 fun collections() {

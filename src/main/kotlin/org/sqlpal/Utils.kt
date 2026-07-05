@@ -89,6 +89,7 @@ internal fun buildWhereWithId(entity: Any, sb: StringBuilder, bindParams:ArrayLi
     addPropToBindParams(entity, id, bindParams)
 }
 
+@PublishedApi
 internal fun addPropToBindParams(entity: Any, p: KProperty<*>, bindParams: MutableList<Any?>) {
     @Suppress("UNCHECKED_CAST")
     val value = when (p) {
