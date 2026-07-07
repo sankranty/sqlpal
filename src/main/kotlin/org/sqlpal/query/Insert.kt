@@ -10,7 +10,7 @@ import kotlin.reflect.full.memberProperties
 //--------------------- Contains methods to perform INSERT ---------------------//
 //////////////////////////////////////////////////////////////////////////////////
 
-/** Inserts specified entity into the table, considering that:
+/** Inserts specified [entity] into the table, considering that:
  * - the table is named as the class in accordance with [SqlPal.convertNamesToSnakeCase] option,
  * - the columns are named as the properties in accordance with [SqlPal.convertNamesToSnakeCase] option.
  * Properties annotated with [AutoGen] are not included in the INSERT statement,
@@ -24,6 +24,18 @@ import kotlin.reflect.full.memberProperties
 fun insert(entity: Any, con: Connection? = null, updateAutoGenValues: Boolean = true) =
     execInsertOrUpdate(entity, null, con, updateAutoGenValues,
         "INSERT INTO %s (", "") { _, sb, params -> appendValuesClause(sb, params.size) }
+
+/** Checks if specified [entity] exits in the table, using property annotated with [Id] as a key,
+ * and if not exists, then inserts it into the table, otherwise updates it, considering that:
+ * - the table is named as the class in accordance with [SqlPal.convertNamesToSnakeCase] option,
+ * - the columns are named as the properties in accordance with [SqlPal.convertNamesToSnakeCase] option.
+ * Properties annotated with [AutoGen] are not included in the INSERT statement, but are read from INSERT results.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
+ * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
+ * @return number of inserted or updated rows. */
+inline fun <reified T: Any> upsert(entity: T, con: Connection? = null) =
+    if (exists(entity, con)) update(entity, con) else insert(entity, con)
 
 /** Inserts multiple items in a single batch, considering:
  * - all items are of the same type,
