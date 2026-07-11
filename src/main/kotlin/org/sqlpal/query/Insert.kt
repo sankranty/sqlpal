@@ -2,6 +2,7 @@ package org.sqlpal.query
 
 import org.sqlpal.*
 import java.sql.Connection
+import java.sql.SQLException
 import kotlin.reflect.KClass
 import kotlin.reflect.full.hasAnnotation
 import kotlin.reflect.full.memberProperties
@@ -25,17 +26,40 @@ fun insert(entity: Any, con: Connection? = null, updateAutoGenValues: Boolean = 
     execInsertOrUpdate(entity, null, con, updateAutoGenValues,
         "INSERT INTO %s (", "") { _, sb, params -> appendValuesClause(sb, params.size) }
 
-/** Checks if specified [entity] exits in the table, using property annotated with [Id] as a key,
- * and if not exists, then inserts it into the table, otherwise updates it, considering that:
+/** Tries to update specified [entity] in the table, and if not succeeded, inserts it, considering that:
  * - the table is named as the class in accordance with [SqlPal.convertNamesToSnakeCase] option,
- * - the columns are named as the properties in accordance with [SqlPal.convertNamesToSnakeCase] option.
+ * - the columns are named as the properties in accordance with [SqlPal.convertNamesToSnakeCase] option,
+ * - the property that maps to the primary key column is annotated with [Id].
+ *
+ * Guarantees safe concurrent inserts/updates of the row with the same key from multiple connections.
+ * Limitation: assumes rows for a given key are not deleted concurrently with upsert.
+ * If deletion occurs between the insert attempt and the update, the method may throw instead of persisting the row;
+ * this is intentional, since a simultaneous upsert and delete of the same key have no defined winner.
+ *
  * Properties annotated with [AutoGen] are not included in the INSERT statement, but are read from INSERT results.
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
+ * @param insertFirst Performance hint. Set to true if inserts are more often. Otherwise, it will try to update first.
  * @return number of inserted or updated rows. */
-inline fun <reified T: Any> upsert(entity: T, con: Connection? = null) =
-    if (exists(entity, con)) update(entity, con) else insert(entity, con)
+inline fun <reified T: Any> upsert(entity: T, con: Connection? = null, insertFirst: Boolean = false): Int {
+    var affectedCount = // General logic - try to update > if failed try to insert > if failed try to update again:
+        if (insertFirst) 0 else update(entity, con) // 1. First try to update as it's cheaper than insert with savepoint
+    if (affectedCount == 0) {                       // 2. if nothing was updated,
+        // On Postgres if autoCommit is off, then failed insert breaks the transaction, so add savepoint to avoid it
+        val sp = if (con?.autoCommit == false) con.setSavepoint() else null
+        try {
+            affectedCount = insert(entity, con)     // 3. then try to insert it,
+        }
+        catch (e: SQLException) {                   // 4. if insert threw an exception,
+            sp?.let { con?.rollback(it) }
+            affectedCount = update(entity, con)     // 5. try to update again as row might be inserted by other connection
+            if (affectedCount == 0) throw e         // 6. if nothing updated, then exception is not our logic related, just rethrow
+        }
+        sp?.let { con?.releaseSavepoint(it) }
+    }
+    return affectedCount
+}
 
 /** Inserts multiple items in a single batch, considering:
  * - all items are of the same type,
