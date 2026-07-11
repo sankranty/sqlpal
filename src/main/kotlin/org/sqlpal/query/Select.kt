@@ -183,15 +183,15 @@ internal fun <T: Any> buildSelectQuery(type: KClass<T>, where: Query, includeOpt
     val props = mutableMapOf<String, KProperty<*>>()
     for (p in type.memberProperties) props[p.name] = p
 
-    for (p in params) {
+    for (p in params) { // Add parameters from the primary constructor
         val prop = props.remove(p.name!!) // remove instead of get to process further only props that don't correspond to params
         if ((!p.isOptional || includeOptional) && (prop == null || !prop.hasAnnotation<SqlIgnore>()))
             sb.append(customNames[p] ?: toDbCase(p.name!!), ',')
     }
-    if (includeOptional)
-        for (p in props.values)
-            if (p is KMutableProperty<*> && !p.hasAnnotation<SqlIgnore>())
-                sb.append(colName(p), ',')
+    if (includeOptional) // Add properties declared in the class body (no corresponding constructor parameter)
+        for (prop in props.values)
+            if (prop is KMutableProperty<*> && !prop.hasAnnotation<SqlIgnore>())
+                sb.append(colName(prop), ',')
 
     if (!sb.endsWith(',')) throw SqlPalException("Can't generate SELECT statement " +
             "for the class ${type.qualifiedName} as it has no suitable properties.")

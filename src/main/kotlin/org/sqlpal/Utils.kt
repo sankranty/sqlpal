@@ -29,11 +29,11 @@ internal inline fun execInsertOrUpdate(entity: Any, propsToUpdate: PropsToUpdate
     val bindParams = ArrayList<Any?>(props.size)
     val autoGenColumns: RefreshMap = if (updateAutoGenValues) mutableMapOf() else emptyMap
     when {
-        propsToUpdate == null ->
+        propsToUpdate == null -> // Include all properties
             for (p in props)
                 processProp(entity, p, bindParams, sb, paramPlaceholder, updateAutoGenValues, autoGenColumns)
 
-        propsToUpdate.include != null -> {
+        propsToUpdate.include != null -> { // Include only specified properties
             for (p in propsToUpdate.include) {
                 appendCol(sb, colName(p), paramPlaceholder)
                 addPropToBindParams(entity, p, bindParams)
@@ -42,7 +42,7 @@ internal inline fun execInsertOrUpdate(entity: Any, propsToUpdate: PropsToUpdate
                 for (p in props)
                     addToRefreshListIfAutoGen(p, true, autoGenColumns, colName(p))
         }
-        propsToUpdate.exclude != null ->
+        propsToUpdate.exclude != null -> // Include all properties except of specified
             for (p in props)
                 propsToUpdate.exclude.find { p.name == it.name }
                     ?: processProp(entity, p, bindParams, sb, paramPlaceholder, updateAutoGenValues, autoGenColumns)
@@ -89,6 +89,7 @@ internal fun buildWhereWithId(entity: Any, sb: StringBuilder, bindParams:ArrayLi
     addPropToBindParams(entity, id, bindParams)
 }
 
+/** Reads value of the specified property from [entity] object and adds it to the [bindParams] list. */
 @PublishedApi
 internal fun addPropToBindParams(entity: Any, p: KProperty<*>, bindParams: MutableList<Any?>) {
     @Suppress("UNCHECKED_CAST")
@@ -102,6 +103,7 @@ internal fun addPropToBindParams(entity: Any, p: KProperty<*>, bindParams: Mutab
     addValueToBindParams(value, entity::class, p, bindParams)
 }
 
+/** Adds [value] of the specified class and property to the [bindParams] list. */
 internal fun addValueToBindParams(value: Any?, classType: KClass<*>, p: KProperty<*>, bindParams: MutableList<Any?>) {
     val paramValue = if (value is Collection<*> || value is Map<*, *>) {
         // Wrap Collection with object that also contains information about generic type of the Collection.
@@ -131,6 +133,7 @@ internal fun addValueToBindParams(value: Any?, classType: KClass<*>, p: KPropert
 internal fun unwrapValueClass(value: Any) =
     value.javaClass.declaredFields.first().run { isAccessible = true; get(value) }
 
+/** Returns primary constructor */
 @PublishedApi
 internal fun <T: Any> getConstructor(type: KClass<T>): KFunction<T> {
     val error = "Class must have primary constructor where are declared all properties that should be read from database."
@@ -139,6 +142,7 @@ internal fun <T: Any> getConstructor(type: KClass<T>): KFunction<T> {
     return constr
 }
 
+/** Returns property annotated with [Id] (considers only one property is annotated) */
 @PublishedApi
 internal fun <T: Any> getIdProperty(type: KClass<T>) = type.memberProperties.find { it.hasAnnotation<Id>() }
     ?: throw SqlPalException("Unable to generate WHERE clause with ID condition for ${type.qualifiedName} class, " +
