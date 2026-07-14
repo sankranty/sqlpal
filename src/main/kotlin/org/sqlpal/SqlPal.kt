@@ -52,7 +52,7 @@ object SqlPal
      * and returning it to the pool after execution. */
     inline fun <T> withConnection (block: (Connection) -> T): T {
         val ds = internalDataSource ?: throw SqlPalException("Attempt to get a connection from the SqlPal datasource " +
-                "while datasource is not set. Call 'Sql.setDataSource' method before using any SqlPal methods, " +
+                "while datasource is not set. Call 'SqlPal.setDataSource' method before using any SqlPal methods, " +
                 "or use overloads that accept a connection as parameter.")
         return ds.connection.use(block)
     }

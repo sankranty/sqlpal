@@ -278,11 +278,11 @@ read<Person>(-"SELECT * FROM person WHERE ${"name" beginsWithIgnoreCase "Mic"}")
 ```
 Full list of methods:
 - `includes`
-- `includesIgoreCase`
+- `includesIgnoreCase`
 - `beginsWith`
-- `beginsWithIgoreCase`
+- `beginsWithIgnoreCase`
 - `finishesWith`
-- `finishesWithIgoreCase`
+- `finishesWithIgnoreCase`
 
 Considering that these are extension methods for the `String`, names are intentionally different 
 from standard string utility functions.
@@ -394,5 +394,5 @@ fun readPerson(r: ResultSet) = Person(
 )
 ```
 This approach is a bit faster, as it does not use reflection to create objects, thus you get the performance of raw JDBC.
-But for most queries that execute in a few milliseconds, the difference will be within a few present or even unnoticeable. 
+But for most queries that execute in a few milliseconds, the difference will be within a few percent or even unnoticeable. 
 So it makes sense only for queries that are executed on the microsecond scale or when you need custom reading logic.

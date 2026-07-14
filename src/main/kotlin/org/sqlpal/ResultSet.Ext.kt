@@ -72,7 +72,7 @@ infix fun ResultSet.date(colName: String): LocalDate? = getObject(colName, Local
 /** Reads LocalTime value from column with specified name. */
 infix fun ResultSet.time(colName: String): LocalTime? = getObject(colName, LocalTime::class.java)
 
-/** Reads LocalTime value from column with specified name. */
+/** Reads OffsetTime value from column with specified name. */
 infix fun ResultSet.otime(colName: String): OffsetTime? = getObject(colName, OffsetTime::class.java)
 
 /** Reads LocalDateTime value from column with specified name. */
@@ -89,5 +89,5 @@ infix fun ResultSet.zdt(colName: String): ZonedDateTime? = getObject(colName, Of
 /** Reads enum value from nullable column with specified name. */
 inline infix fun <reified T: Enum<T>> ResultSet.enum(colName: String): T? = getString(colName)?.let { enumValueOf<T>(it) }
 
-/** Reads enum value from NOT NUL column with specified name. */
+/** Reads enum value from NOT NULL column with specified name. */
 inline infix fun <reified T: Enum<T>> ResultSet.enumVal(colName: String): T = enumValueOf(getString(colName))
