@@ -18,7 +18,7 @@ inline fun <T> transaction(connection: Connection, block: (Connection) -> T): T 
         connection.commit()
         return result
     }
-    catch (ex: Exception) {
+    catch (ex: Throwable) { // Catch Throwable (not Exception) as otherwise on an Error the rollback would be skipped
         connection.rollback()
         throw ex
     }
