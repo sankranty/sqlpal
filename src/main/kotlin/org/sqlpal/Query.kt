@@ -270,7 +270,7 @@ class Query @PublishedApi internal constructor(
      * First argument is item to process, second is list where to add values that will be set as bind parameters.
      * @return array where each element is number of affected rows by each item.*/
     fun doBatch(con: Connection?, items: Iterable<Any>, fillItemParams: (Any, MutableList<Any?>) -> Unit): IntArray =
-        doAction(con, null, true) {
+        doAction(con, null, isBatch = true) {
             for (item in items) {
                 bindParams.clear()
                 fillItemParams(item, bindParams)
