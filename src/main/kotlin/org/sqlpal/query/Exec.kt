@@ -42,6 +42,31 @@ fun execWithResult(query: Query, con: Connection? = null) = query.doAction(con, 
     else stmt.generatedKeys.use { if (!it.next()) null else it.getObject(1) }
 }
 
+/** Executes INSERT, UPDATE, DELETE (or other command that generates results),
+ * and creates object of specified type from the generated results.
+ * Method requests database driver to retrieve all generated results, so no RETURNING clause needed in the query.
+ * But if results are not retrieved, it means your database driver does not support this option.
+ * Throws [IllegalArgumentException] if execution did not return generated results.
+ * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
+ * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
+ * @return Object created from the generated results of provided query. */
+inline fun <reified T: Any> execToOne(query: Query, con: Connection? = null): T =
+    execToOneOrNull(query, con) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
+
+/** Executes INSERT, UPDATE, DELETE (or other command that generates results),
+ * and creates object of specified type from the generated results.
+ * Method requests database driver to retrieve all generated results, so no RETURNING clause needed in the query.
+ * But if results are not retrieved, it means your database driver does not support this option.
+ * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
+ * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
+ * @return Object created from the generated results of provided query or null if no results. */
+inline fun <reified T: Any> execToOneOrNull(query: Query, con: Connection? = null): T? =
+    query.read(T::class, 1, con, true).firstOrNull()
+
 /** Executes INSERT, UPDATE, DELETE or a command with no results, and returns number of rows affected.
  * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param con If specified, then command is executed on it, and it is not closed after use.

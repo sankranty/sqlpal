@@ -33,8 +33,15 @@ class Query @PublishedApi internal constructor(
     // It's also marked with @PublishedApi due to public inline functions can't call private or internal methods,
     // as their code is embedded at call site.
     @PublishedApi
-    internal fun <T: Any> read(classType: KClass<T>, capacity: Int, con: Connection?) = doAction(con) { stmt ->
-        val rs = stmt.executeQuery()
+    internal fun <T: Any> read(classType: KClass<T>, capacity: Int, con: Connection?, exec: Boolean = false)
+    // If exec parameter is true, then set request for generated results (is done in doAction),
+    // execute update and get generated results reader, otherwise just get reader from executeQuery
+    = doAction(con, null, exec) { stmt ->
+        val rs = if (exec) {
+            if (stmt.executeUpdate() == 0) return@doAction ArrayList()
+            stmt.generatedKeys
+        } else
+            stmt.executeQuery()
 
         // Create mapping of column names (without delimiters to find it further by property name) to column indices
         val colIndices = mutableMapOf<String, Int>()
