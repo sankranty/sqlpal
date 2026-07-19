@@ -7,7 +7,8 @@ import java.sql.Connection
 //------------------- Contains methods to execute DML queries ------------------//
 //////////////////////////////////////////////////////////////////////////////////
 
-/** Executes INSERT, UPDATE, DELETE or a command with no results.
+/** Executes INSERT, UPDATE, DELETE (or other command that generates results),
+ * and returns map of column_name -> value for the inserted/updated row.
  * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param autoGenColumns array of column names for which to return values after execution.
  * Note that unlike [read] and [select] methods, where types of values are known and thus all supported types
@@ -16,7 +17,7 @@ import java.sql.Connection
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
- * @return map of column name - value for inserted/updated row. Map contains columns specified in [autoGenColumns].
+ * @return map of column_name -> value for the inserted/updated row. Map contains columns specified in [autoGenColumns].
  * It is useful to get values of auto-generated columns (e.g. ID). Returns null if no rows are updated. */
 fun execWithResults(query: Query, autoGenColumns: Array<String>? = null, con: Connection? = null) = query.doAction(con, autoGenColumns) { stmt ->
     if (stmt.executeUpdate() == 0) null
@@ -29,7 +30,8 @@ fun execWithResults(query: Query, autoGenColumns: Array<String>? = null, con: Co
     }
 }
 
-/** Executes INSERT, UPDATE, DELETE or a command with no results.
+/** Executes INSERT, UPDATE, DELETE (or other command that generates results),
+ * and returns scalar value, or null if result set is empty.
  * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
