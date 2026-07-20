@@ -7,8 +7,11 @@ import java.sql.Connection
 //------------------- Contains methods to execute DML queries ------------------//
 //////////////////////////////////////////////////////////////////////////////////
 
-/** Executes INSERT, UPDATE, DELETE (or other command that generates results),
- * and returns map of column_name -> value for the inserted/updated row.
+/** Executes INSERT, UPDATE, DELETE (or other query that updates data),
+ * and returns map of column_name -> value for the updated row.
+ * Method requests database driver to retrieve all vales of the updated row,
+ * so RETURNING clause can be omitted in the query.
+ * If results are not retrieved, it means your database driver does not support this option.
  * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param autoGenColumns array of column names for which to return values after execution.
  * Note that unlike [read] and [select] methods, where types of values are known and thus all supported types
@@ -30,8 +33,12 @@ fun execWithResults(query: Query, autoGenColumns: Array<String>? = null, con: Co
     }
 }
 
-/** Executes INSERT, UPDATE, DELETE (or other command that generates results),
+/** Executes INSERT, UPDATE, DELETE (or other query that updates data),
  * and returns scalar value, or null if result set is empty.
+ * Method requests database driver to retrieve all vales of the updated row,
+ * so RETURNING clause can be omitted in the query.
+ * If [query] always returns result set by itself, use [readValue] method instead.
+ * If results are not retrieved, it means your database driver does not support this option.
  * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
@@ -44,11 +51,13 @@ fun execWithResult(query: Query, con: Connection? = null) = query.doAction(con, 
     else stmt.generatedKeys.use { if (!it.next()) null else it.getObject(1) }
 }
 
-/** Executes INSERT, UPDATE, DELETE (or other command that generates results),
- * and creates object of specified type from the generated results.
- * Method requests database driver to retrieve all generated results, so no RETURNING clause needed in the query.
- * But if results are not retrieved, it means your database driver does not support this option.
- * Throws [IllegalArgumentException] if execution did not return generated results.
+/** Executes INSERT, UPDATE, DELETE (or other query that updates data),
+ * and creates an object of specified type from the updated row.
+ * Method requests database driver to retrieve all vales of the updated row,
+ * so RETURNING clause can be omitted in the query.
+ * If [query] always returns result set by itself, use [readOne] method instead.
+ * If results are not retrieved, it means your database driver does not support this option.
+ * Throws [IllegalArgumentException] if query did not return any results.
  * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
@@ -57,10 +66,12 @@ fun execWithResult(query: Query, con: Connection? = null) = query.doAction(con, 
 inline fun <reified T: Any> execToOne(query: Query, con: Connection? = null): T =
     execToOneOrNull(query, con) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
 
-/** Executes INSERT, UPDATE, DELETE (or other command that generates results),
- * and creates object of specified type from the generated results.
- * Method requests database driver to retrieve all generated results, so no RETURNING clause needed in the query.
- * But if results are not retrieved, it means your database driver does not support this option.
+/** Executes INSERT, UPDATE, DELETE (or other query that updates data),
+ * and creates an object of specified type from the updated row.
+ * Method requests database driver to retrieve all vales of the updated row,
+ * so RETURNING clause can be omitted in the query.
+ * If [query] always returns result set by itself, use [readOneOrNull] method instead.
+ * If results are not retrieved, it means your database driver does not support this option.
  * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
