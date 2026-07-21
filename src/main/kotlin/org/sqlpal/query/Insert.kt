@@ -15,7 +15,7 @@ import kotlin.reflect.full.memberProperties
  * - the table is named as the class in accordance with [SqlPal.convertNamesToSnakeCase] option,
  * - the columns are named as the properties in accordance with [SqlPal.convertNamesToSnakeCase] option.
  * Properties annotated with [AutoGen] are not included in the INSERT statement,
- * but are read from INSERT results if [updateAutoGenValues] is true.
+ * but are read from the INSERT results if [updateAutoGenValues] is true (the default).
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
