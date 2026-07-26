@@ -3,6 +3,7 @@ package org.sqlpal.query
 import org.sqlpal.*
 import java.sql.Connection
 import java.sql.SQLException
+import java.sql.Statement
 import kotlin.reflect.KClass
 import kotlin.reflect.full.hasAnnotation
 import kotlin.reflect.full.memberProperties
@@ -96,7 +97,9 @@ internal fun <T: Any> insertMany(itemClass: KClass<T>, items: Iterable<T>, con: 
         .doBatch(con, items) { item, params ->
             for (p in props) addPropToBindParams(item, p, params)
         }
-    return insertedCounts.sum()
+    // Driver may report SUCCESS_NO_INFO (-2) instead of the actual count
+    // (e.g. Postgres does it when reWriteBatchedInserts is enabled), count such statements as 1 inserted row.
+    return insertedCounts.sumOf { if (it == Statement.SUCCESS_NO_INFO) 1 else it }
 }
 
 private fun appendValuesClause(sb: StringBuilder, bindParamsCount: Int) {
