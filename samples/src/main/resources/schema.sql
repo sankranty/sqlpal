@@ -1,4 +1,7 @@
 
+GRANT ALL ON SCHEMA public TO test;
+GRANT ALL ON SCHEMA public TO test_big;
+
 create type Gender as enum ('female','male');
 create cast (varchar as Gender) with inout as implicit;
 create cast (Gender as varchar) with inout as implicit;
@@ -41,6 +44,17 @@ create table person3 (
                      num integer[],
                      primary key (id)
 );
+alter table person3 add column "some data" integer;
+alter table person3 add column edu Education[];
+alter table person3 add column edu2 Education[];
+alter table person3 add column num2 integer[];
+
+ALTER TABLE person3 RENAME TO "some table";
+ALTER TABLE "some table" RENAME COLUMN name TO "first-name";
+ALTER type Education RENAME TO edu;
+alter table "some table" add column edus edu[];
+alter table "some table" drop column edus;
+alter table "some table" add column num_arr integer[];
 
 create table person_j (
                       id bigint not null generated always as identity,
