@@ -136,7 +136,8 @@ internal fun unwrapValueClass(value: Any) =
 /** Returns primary constructor */
 @PublishedApi
 internal fun <T: Any> getConstructor(type: KClass<T>): KFunction<T> {
-    val error = "Class must have primary constructor where are declared all properties that should be read from database."
+    val error = "'${type.qualifiedName}' does not have primary constructor. " +
+            "Class must have primary constructor where are declared all properties that should be read from database."
     val constr = type.primaryConstructor ?: throw SqlPalException(error)
     if (constr.parameters.isEmpty()) throw SqlPalException(error)
     return constr
