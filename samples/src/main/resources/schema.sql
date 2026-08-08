@@ -1,4 +1,10 @@
 
+CREATE USER test WITH PASSWORD 'test';
+CREATE DATABASE test WITH OWNER = test;
+
+CREATE USER test_big WITH PASSWORD 'test_big';
+CREATE DATABASE test_big WITH OWNER = test_big;
+
 GRANT ALL ON SCHEMA public TO test;
 GRANT ALL ON SCHEMA public TO test_big;
 
