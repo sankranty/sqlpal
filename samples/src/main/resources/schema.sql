@@ -59,8 +59,10 @@ ALTER TABLE person3 RENAME TO "some table";
 ALTER TABLE "some table" RENAME COLUMN name TO "first-name";
 ALTER type Education RENAME TO edu;
 alter table "some table" add column edus edu[];
-alter table "some table" drop column edus;
 alter table "some table" add column num_arr integer[];
+
+ALTER TABLE "some table" RENAME TO person3;
+ALTER TABLE person3 RENAME COLUMN "first-name" TO name;
 
 create table person_j (
                       id bigint not null generated always as identity,
