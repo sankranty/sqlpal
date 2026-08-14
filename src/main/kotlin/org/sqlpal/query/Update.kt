@@ -168,11 +168,24 @@ fun update(entity: Any, params: List<Pair<String, Any?>>, con: Connection? = nul
  * After the conditions, any clause that goes after WHERE (e.g. ORDER BY or LIMIT) can be specified.
  * @param propsToSet Pairs of property - value to set,
  * e.g.: Person::position to "Developer", Person::isHired to true.
+ * @return number of updated rows. */
+inline fun <reified T> updateWhere(where: Query, vararg propsToSet: Pair<KProperty1<T, *>, Any?>) =
+    // This method must be inline to obtain generic type, but public inline function can't access private members.
+    // So implementation is moved to the separate internal method, that receives type just as a parameter.
+    updateWithoutObject(T::class, where, propsToSet, null)
+
+/** Updates specified columns with specified values in the corresponding table, considering that:
+ * - table is named as the class in accordance with [SqlPal.convertNamesToSnakeCase] option,
+ * - columns are named as the properties in accordance with [SqlPal.convertNamesToSnakeCase] option.
+ * @param where WHERE clause content specified with -"..." or -"""...""" syntax.
+ * After the conditions, any clause that goes after WHERE (e.g. ORDER BY or LIMIT) can be specified.
+ * @param propsToSet Pairs of property - value to set,
+ * e.g.: Person::position to "Developer", Person::isHired to true.
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
  * @return number of updated rows. */
-inline fun <reified T> update(where: Query, vararg propsToSet: Pair<KProperty1<T, *>, Any?>, con: Connection? = null) =
+inline fun <reified T> updateWhere(where: Query, con: Connection?, vararg propsToSet: Pair<KProperty1<T, *>, Any?>) =
     // This method must be inline to obtain generic type, but public inline function can't access private members.
     // So implementation is moved to the separate internal method, that receives type just as a parameter.
     updateWithoutObject(T::class, where, propsToSet, con)

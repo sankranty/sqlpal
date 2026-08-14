@@ -160,7 +160,7 @@ fun json() {
     )
     insert(p)
 
-    update(-"id >= ${44}", PersonJ::name to "Ekaterina")
+    updateWhere(-"id >= ${44}", PersonJ::name to "Ekaterina")
 
     val persons = select<PersonJ>(-"${"edu" includes "high"}")
     persons.forEach { println(it) }
