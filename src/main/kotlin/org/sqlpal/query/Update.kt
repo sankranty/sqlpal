@@ -170,9 +170,7 @@ fun update(entity: Any, params: List<Pair<String, Any?>>, con: Connection? = nul
  * e.g.: Person::position to "Developer", Person::isHired to true.
  * @return number of updated rows. */
 inline fun <reified T> updateWhere(where: Query, vararg propsToSet: Pair<KProperty1<T, *>, Any?>) =
-    // This method must be inline to obtain generic type, but public inline function can't access private members.
-    // So implementation is moved to the separate internal method, that receives type just as a parameter.
-    updateWithoutObject(T::class, where, propsToSet, null)
+    updateWhere(where, null, *propsToSet)
 
 /** Updates specified columns with specified values in the corresponding table, considering that:
  * - table is named as the class in accordance with [SqlPal.convertNamesToSnakeCase] option,
