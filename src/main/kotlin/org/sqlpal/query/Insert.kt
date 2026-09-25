@@ -43,7 +43,7 @@ fun insert(entity: Any, con: Connection? = null, updateAutoGenValues: Boolean = 
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
  * @param insertFirst Performance hint. Set to true if inserts are more often. Otherwise, it will try to update first.
  * @return number of inserted or updated rows. */
-inline fun <reified T: Any> upsert(entity: T, con: Connection? = null, insertFirst: Boolean = false): Int {
+fun <T: Any> upsert(entity: T, con: Connection? = null, insertFirst: Boolean = false): Int {
     var affectedCount = // General logic - try to update > if failed try to insert > if failed try to update again:
         if (insertFirst) 0 else update(entity, con) // 1. First try to update as it's cheaper than insert with savepoint
     if (affectedCount == 0) {                       // 2. if nothing was updated,
@@ -71,11 +71,9 @@ inline fun <reified T: Any> upsert(entity: T, con: Connection? = null, insertFir
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
  * @return number of inserted rows. */
-inline fun <reified T: Any> insertMany(items: Iterable<T>, con: Connection? = null) =
-    // Public inline function can't access private members, while it must be inline to get generic type.
-    // So implementation is moved to separate internal method, that receives type just as parameter.
-    insertMany(T::class, items, con)
-
+inline fun <reified T: Any> insertMany(items: Iterable<T>, con: Connection? = null) = insertMany(T::class, items, con)
+// Public inline function can't access private members, while it must be inline to get generic type.
+// So implementation is moved to separate internal method, that receives type just as parameter.
 @PublishedApi
 internal fun <T: Any> insertMany(itemClass: KClass<T>, items: Iterable<T>, con: Connection? = null): Int
 {

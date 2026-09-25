@@ -170,7 +170,7 @@ fun update(entity: Any, params: List<Pair<String, Any?>>, con: Connection? = nul
  * e.g.: Person::position to "Developer", Person::isHired to true.
  * @return number of updated rows. */
 inline fun <reified T> updateWhere(where: Query, vararg propsToSet: Pair<KProperty1<T, *>, Any?>) =
-    updateWhere(where, null, *propsToSet)
+    updateWhere(T::class, where, propsToSet, null)
 
 /** Updates specified columns with specified values in the corresponding table, considering that:
  * - table is named as the class in accordance with [SqlPal.convertNamesToSnakeCase] option,
@@ -184,12 +184,11 @@ inline fun <reified T> updateWhere(where: Query, vararg propsToSet: Pair<KProper
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
  * @return number of updated rows. */
 inline fun <reified T> updateWhere(where: Query, con: Connection?, vararg propsToSet: Pair<KProperty1<T, *>, Any?>) =
-    // This method must be inline to obtain generic type, but public inline function can't access private members.
-    // So implementation is moved to the separate internal method, that receives type just as a parameter.
-    updateWithoutObject(T::class, where, propsToSet, con)
-
+    updateWhere(T::class, where, propsToSet, con)
+// This method must be inline to obtain generic type, but public inline function can't access private members.
+// So implementation is moved to the separate internal method, that receives type just as a parameter.
 @PublishedApi
-internal fun updateWithoutObject(classType: KClass<*>, where: Query, propsToSet: Array<out Pair<KProperty1<*, *>, Any?>>, con: Connection?): Int
+internal fun updateWhere(classType: KClass<*>, where: Query, propsToSet: Array<out Pair<KProperty1<*, *>, Any?>>, con: Connection?): Int
 {
     val sb = StringBuilder("UPDATE ${entityName(classType)} SET ")
     val bindParams = ArrayList<Any?>(propsToSet.size)

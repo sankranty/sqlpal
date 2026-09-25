@@ -2,6 +2,7 @@ package org.sqlpal.query
 
 import org.sqlpal.*
 import java.sql.Connection
+import kotlin.reflect.KClass
 
 //////////////////////////////////////////////////////////////////////////////////
 //--------------------- Contains methods to perform DELETE ---------------------//
@@ -31,7 +32,9 @@ fun delete(entity: Any, con: Connection? = null): Int {
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
  * @return number of rows deleted. */
-inline fun <reified T: Any> delete(where: Query, con: Connection? = null): Int {
-    val sb = StringBuilder("DELETE FROM ${entityName(T::class)} WHERE ${where.sql}")
+inline fun <reified T: Any> delete(where: Query, con: Connection? = null) = delete(T::class, where, con)
+
+@PublishedApi internal fun <T: Any> delete(type: KClass<T>, where: Query, con: Connection? = null): Int {
+    val sb = StringBuilder("DELETE FROM ${entityName(type)} WHERE ${where.sql}")
     return exec(Query(sb.toString(), where.bindParams), con)
 }

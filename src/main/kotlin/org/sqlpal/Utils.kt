@@ -90,7 +90,6 @@ internal fun buildWhereWithId(entity: Any, sb: StringBuilder, bindParams:ArrayLi
 }
 
 /** Reads value of the specified property from [entity] object and adds it to the [bindParams] list. */
-@PublishedApi
 internal fun addPropToBindParams(entity: Any, p: KProperty<*>, bindParams: MutableList<Any?>) {
     @Suppress("UNCHECKED_CAST")
     val value = when (p) {
@@ -141,14 +140,12 @@ internal fun <T: Any> getConstructor(type: KClass<T>) = type.primaryConstructor
             "of the primary constructor, or as mutable properties in the class body.")
 
 /** Returns property annotated with [Id] (considers only one property is annotated) */
-@PublishedApi
 internal fun <T: Any> getIdProperty(type: KClass<T>) = type.memberProperties.find { it.hasAnnotation<Id>() }
     ?: throw SqlPalException("Unable to generate WHERE clause with ID condition for ${type.qualifiedName} class, " +
             "as it does not have property annotated with @Id.")
 
-@PublishedApi
 internal fun entityName(type: KClass<*>) = customName(type) ?: toDbCase(type.simpleName!!)
-@PublishedApi
+
 internal fun colName(prop: KProperty<*>) = customName(prop) ?: toDbCase(prop.name)
 
 // Until version 2.2 Kotlin did not support applying single annotation on both constructor parameter and property.

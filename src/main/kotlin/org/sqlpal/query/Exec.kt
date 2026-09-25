@@ -2,6 +2,7 @@ package org.sqlpal.query
 
 import org.sqlpal.*
 import java.sql.Connection
+import kotlin.reflect.KClass
 
 //////////////////////////////////////////////////////////////////////////////////
 //------------------- Contains methods to execute DML queries ------------------//
@@ -63,8 +64,10 @@ fun execWithResult(query: Query, con: Connection? = null) = query.doAction(con, 
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
  * @return Object created from the generated results of provided query. */
-inline fun <reified T: Any> execToOne(query: Query, con: Connection? = null): T =
-    execToOneOrNull(query, con) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
+inline fun <reified T: Any> execToOne(query: Query, con: Connection? = null) = execToOne(T::class, query, con)
+
+@PublishedApi internal fun <T: Any> execToOne(type: KClass<T>, query: Query, con: Connection? = null): T =
+    execToOneOrNull(type, query, con) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
 
 /** Executes INSERT, UPDATE, DELETE (or other query that updates data),
  * and creates an object of specified type from the updated row.
@@ -77,8 +80,10 @@ inline fun <reified T: Any> execToOne(query: Query, con: Connection? = null): T 
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
  * @return Object created from the generated results of provided query or null if no results. */
-inline fun <reified T: Any> execToOneOrNull(query: Query, con: Connection? = null): T? =
-    query.read(T::class, 1, con, true).firstOrNull()
+inline fun <reified T: Any> execToOneOrNull(query: Query, con: Connection? = null) = execToOneOrNull(T::class, query, con)
+
+@PublishedApi internal fun <T: Any> execToOneOrNull(type: KClass<T>, query: Query, con: Connection? = null): T? =
+    query.read(type, 1, con, true).firstOrNull()
 
 /** Executes INSERT, UPDATE, DELETE or a command with no results, and returns number of rows affected.
  * @param query Query specified with -"..." or -"""...""" syntax (see [Sql] for details).

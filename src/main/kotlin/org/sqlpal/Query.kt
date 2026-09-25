@@ -132,7 +132,6 @@ class Query @PublishedApi internal constructor(
         return Triple(hasUnmappedOptionalParams, paramReaders, propReaders)
     }
 
-    @PublishedApi
     internal fun <T: Any> readValues(valueType: KClass<T>, capacity: Int, con: Connection?) = doAction(con) { stmt ->
         val rs = stmt.executeQuery()
         val results = if (capacity >= 0) ArrayList<T>(capacity) else ArrayList()

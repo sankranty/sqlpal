@@ -22,9 +22,11 @@ import kotlin.reflect.full.memberProperties
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
  * @return true if entity with specified id exists in the table, otherwise false. */
-inline fun <reified T: Any> exists(id: Long, con: Connection? = null): Boolean {
-    val idCol = colName(getIdProperty(T::class))
-    val query = "SELECT 1 FROM ${entityName(T::class)} WHERE $idCol = ?"
+inline fun <reified T: Any> exists(id: Long, con: Connection? = null) = exists(T::class, id, con)
+@PublishedApi
+internal fun <T: Any> exists(type: KClass<T>, id: Long, con: Connection? = null): Boolean {
+    val idCol = colName(getIdProperty(type))
+    val query = "SELECT 1 FROM ${entityName(type)} WHERE $idCol = ?"
     return readValueOrNull<Int>(Query(query, mutableListOf(id)), con) != null
 }
 
@@ -37,9 +39,11 @@ inline fun <reified T: Any> exists(id: Long, con: Connection? = null): Boolean {
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
  * @return true if entity with specified id exists in the table, otherwise false. */
-inline fun <reified T: Any> exists(entity: T, con: Connection? = null): Boolean {
-    val prop = getIdProperty(T::class)
-    val query = "SELECT 1 FROM ${entityName(T::class)} WHERE ${colName(prop)} = ?"
+inline fun <reified T: Any> exists(entity: T, con: Connection? = null) = exists(T::class, entity, con)
+@PublishedApi
+internal fun <T: Any> exists(type: KClass<T>, entity: T, con: Connection? = null): Boolean {
+    val prop = getIdProperty(type)
+    val query = "SELECT 1 FROM ${entityName(type)} WHERE ${colName(prop)} = ?"
     val bindParams = mutableListOf<Any?>()
     addPropToBindParams(entity, prop, bindParams)
     return readValueOrNull<Int>(Query(query, bindParams), con) != null
@@ -57,8 +61,10 @@ inline fun <reified T: Any> exists(entity: T, con: Connection? = null): Boolean 
  * @return object of specified type, created from query results by mapping
  * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
  * If property doesn't have corresponding column, then annotate it with [SqlIgnore]. */
-inline fun <reified T: Any> selectById(id: Long, con: Connection? = null) =
-    selectByIdOrNull<T>(id, con) ?: throw IllegalArgumentException("Record with ID $id was not found.")
+inline fun <reified T: Any> selectById(id: Long, con: Connection? = null) = selectById(T::class, id, con)
+@PublishedApi
+internal fun <T: Any> selectById(type: KClass<T>, id: Long, con: Connection? = null) =
+    selectByIdOrNull(type, id, con) ?: throw IllegalArgumentException("Record with ID $id was not found.")
 
 /** Selects a single row with the specified ID, considering that:
  * - the table is named as the class in accordance with [SqlPal.convertNamesToSnakeCase] option,
@@ -72,10 +78,12 @@ inline fun <reified T: Any> selectById(id: Long, con: Connection? = null) =
  * @return object of specified type, created from query results by mapping
  * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
  * If property doesn't have corresponding column, then annotate it with [SqlIgnore].*/
-inline fun <reified T: Any> selectByIdOrNull(id: Long, con: Connection? = null): T? {
-    val idCol = colName(getIdProperty(T::class))
-    val query = buildSelectQuery(T::class, Query("$idCol = ?", mutableListOf(id)))
-    return readOneOrNull(query, con)
+inline fun <reified T: Any> selectByIdOrNull(id: Long, con: Connection? = null) = selectByIdOrNull(T::class, id, con)
+@PublishedApi
+internal fun <T: Any> selectByIdOrNull(type: KClass<T>, id: Long, con: Connection? = null): T? {
+    val idCol = colName(getIdProperty(type))
+    val query = buildSelectQuery(type, Query("$idCol = ?", mutableListOf(id)))
+    return readOneOrNull(type, query, con)
 }
 
 /** Executes SELECT with columns specified from primary constructor parameters and mutable properties,
@@ -95,7 +103,10 @@ inline fun <reified T: Any> selectByIdOrNull(id: Long, con: Connection? = null):
  * If query returns no rows, then [IllegalArgumentException] is thrown.
  * If property doesn't have corresponding column, then annotate it with [SqlIgnore] or set [includeOptional] to false. */
 inline fun <reified T: Any> selectOne(where: Query, con: Connection? = null, includeOptional: Boolean = true) =
-    selectOneOrNull<T>(where, con, includeOptional) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
+    selectOne(T::class, where, con, includeOptional)
+@PublishedApi
+internal fun <T: Any> selectOne(type: KClass<T>, where: Query, con: Connection? = null, includeOptional: Boolean = true) =
+    selectOneOrNull(type, where, con, includeOptional) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
 
 /** Executes SELECT with columns specified from primary constructor parameters and mutable properties,
  * and WHERE clause content from [where] parameter, considering that:
@@ -114,7 +125,10 @@ inline fun <reified T: Any> selectOne(where: Query, con: Connection? = null, inc
  * or null if nothing was found.
  * If property doesn't have corresponding column, then annotate it with [SqlIgnore] or set [includeOptional] to false. */
 inline fun <reified T: Any> selectOneOrNull(where: Query, con: Connection? = null, includeOptional: Boolean = true) =
-    select<T>(where, con, -1, includeOptional).firstOrNull()
+    selectOneOrNull(T::class, where, con, includeOptional)
+@PublishedApi
+internal fun <T: Any> selectOneOrNull(type: KClass<T>, where: Query, con: Connection? = null, includeOptional: Boolean = true) =
+    select(type, where, con, -1, includeOptional).firstOrNull()
 
 /** Executes SELECT with columns specified from primary constructor parameters and mutable properties,
  * and WHERE clause content from [where] parameter, considering that:
@@ -129,7 +143,7 @@ inline fun <reified T: Any> selectOneOrNull(where: Query, con: Connection? = nul
  * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
  * If property doesn't have corresponding column, then annotate it with [SqlIgnore] or set [includeOptional] to false. */
 inline fun <reified T: Any> select(where: Query, includeOptional: Boolean = true) =
-    select<T>(where, null, -1, includeOptional)
+    select(T::class, where, null, -1, includeOptional)
 
 /** Executes SELECT with columns specified from primary constructor parameters and mutable properties,
  * and WHERE clause content from [where] parameter, considering that:
@@ -146,7 +160,7 @@ inline fun <reified T: Any> select(where: Query, includeOptional: Boolean = true
  * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
  * If property doesn't have corresponding column, then annotate it with [SqlIgnore] or set [includeOptional] to false. */
 inline fun <reified T: Any> select(where: Query, capacity: Int = -1, includeOptional: Boolean = true) =
-    select<T>(where, null, capacity, includeOptional)
+    select(T::class, where, null, capacity, includeOptional)
 
 /** Executes SELECT with columns specified from primary constructor parameters and mutable properties,
  * with WHERE clause content from [where] parameter, considering that:
@@ -165,15 +179,14 @@ inline fun <reified T: Any> select(where: Query, capacity: Int = -1, includeOpti
  * @return [ArrayList] with objects of specified type, created from query results by mapping
  * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
  * If property doesn't have corresponding column, then annotate it with [SqlIgnore] or set [includeOptional] to false. */
-inline fun <reified T: Any> select(where: Query, con: Connection? = null, capacity: Int = -1, includeOptional: Boolean = true): ArrayList<T> {
-    // Implementation is moved to separate method, that receives generic type just as parameter
-    // (and thus does not need to be inline), because this method will be called in many places in client code,
-    // so it will blow app work set if implementation will be inlined.
-    val query = buildSelectQuery(T::class, where, includeOptional)
-    return read(query, capacity, con)
+inline fun <reified T: Any> select(where: Query, con: Connection? = null, capacity: Int = -1, includeOptional: Boolean = true) =
+    select(T::class, where, con, capacity, includeOptional)
+@PublishedApi
+internal fun <T: Any> select(type: KClass<T>, where: Query, con: Connection? = null, capacity: Int = -1, includeOptional: Boolean = true): ArrayList<T> {
+    val query = buildSelectQuery(type, where, includeOptional)
+    return query.read(type, capacity, con)
 }
 
-@PublishedApi
 internal fun <T: Any> buildSelectQuery(type: KClass<T>, where: Query, includeOptional: Boolean = true): Query
 {
     val sb = StringBuilder("SELECT ")
@@ -211,8 +224,10 @@ internal fun <T: Any> buildSelectQuery(type: KClass<T>, where: Query, includeOpt
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience. */
-inline fun <reified T: Any> readValue(query: Query, con: Connection? = null) =
-    readValueOrNull<T>(query, con) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
+inline fun <reified T: Any> readValue(query: Query, con: Connection? = null) = readValue(T::class, query, con)
+@PublishedApi
+internal fun <T: Any> readValue(type: KClass<T>, query: Query, con: Connection? = null) =
+    readValueOrNull(type, query, con) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
 
 /** Runs the specified query and returns a single value from the first column of the first returned row,
  * or null if query returned no rows.
@@ -220,16 +235,20 @@ inline fun <reified T: Any> readValue(query: Query, con: Connection? = null) =
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience. */
-inline fun <reified T: Any> readValueOrNull(query: Query, con: Connection? = null) =
-    query.readValues(T::class, 1, con).firstOrNull()
+inline fun <reified T: Any> readValueOrNull(query: Query, con: Connection? = null) = readValueOrNull(T::class, query, con)
+@PublishedApi
+internal fun <T: Any> readValueOrNull(type: KClass<T>, query: Query, con: Connection? = null) =
+    query.readValues(type, 1, con).firstOrNull()
 
 /** Runs the specified query and returns [ArrayList] with values from the first column of the result set.
  * @param query SELECT query specified with -"..." or -"""...""" syntax (see [Sql] for details).
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience. */
-inline fun <reified T: Any> readValues(query: Query, con: Connection? = null) =
-    query.readValues(T::class, -1, con)
+inline fun <reified T: Any> readValues(query: Query, con: Connection? = null) = readValues(T::class, query, con)
+@PublishedApi
+internal fun <T: Any> readValues(type: KClass<T>, query: Query, con: Connection? = null) =
+    query.readValues(type, -1, con)
 
 /** Runs the specified query and returns an object of specified type, created from the first row of the query result
  * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
@@ -238,8 +257,10 @@ inline fun <reified T: Any> readValues(query: Query, con: Connection? = null) =
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience. */
-inline fun <reified T: Any> readOne(query: Query, con: Connection? = null) =
-    readOneOrNull<T>(query, con) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
+inline fun <reified T: Any> readOne(query: Query, con: Connection? = null) = readOne(T::class, query, con)
+@PublishedApi
+internal fun <T: Any> readOne(type: KClass<T>, query: Query, con: Connection? = null) =
+    readOneOrNull(type, query, con) ?: throw IllegalArgumentException("Can't read first value as query returned no rows.")
 
 /** Runs the specified query and returns an object of specified type, created from the first row of the query result
  * by mapping names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
@@ -248,8 +269,10 @@ inline fun <reified T: Any> readOne(query: Query, con: Connection? = null) =
  * @param con If specified, then command is executed on it, and it is not closed after use.
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience. */
-inline fun <reified T: Any> readOneOrNull(query: Query, con: Connection? = null) =
-    query.read(T::class, 1, con).firstOrNull()
+inline fun <reified T: Any> readOneOrNull(query: Query, con: Connection? = null) = readOneOrNull(T::class, query, con)
+@PublishedApi
+internal fun <T: Any> readOneOrNull(type: KClass<T>, query: Query, con: Connection? = null) =
+    query.read(type, 1, con).firstOrNull()
 
 /** Runs the specified query and returns [ArrayList] with objects of specified type, created from query results by mapping
  * names of constructor parameters and properties to column names (case-insensitive, ignoring word delimiters).
