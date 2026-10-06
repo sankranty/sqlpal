@@ -274,7 +274,7 @@ read<Person>(-"SELECT * FROM person ORDER BY $I$sortColumn")
 For `LIKE` conditions there are convenience methods that automatically add wildcards, escape special characters 
 in the input and cast column and input to lowercase if case-insensitive comparison is required.
 ```kotlin
-read<Person>(-"SELECT * FROM person WHERE ${"name" beginsWithIgnoreCase "Mic"}")
+read<Person>(-"SELECT * FROM person WHERE ${"name" beginsWithIgnoreCase input}")
 ```
 Full list of methods:
 - `includes`

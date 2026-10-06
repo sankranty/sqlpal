@@ -52,9 +52,9 @@ operator fun String.unaryMinus(): Query = interpolatorBody()
  * For common LIKE conditions you can use the following convenience functions for more compact syntax:
  * - [includes] and [includesIgnoreCase],
  * - [beginsWith] and [beginsWithIgnoreCase],
- * - [finishesWith] and [finishesWithIgnoreCase], e.g.:
+ * - [finishesWith] and [finishesWithIgnoreCase], e.g. ('input' is some variable):
  * ```
- * read<Person>(-"SELECT * FROM pers WHERE id > $id and ${"name" beginsWithIgnoreCase "Mic"}")
+ * read<Person>(-"SELECT * FROM pers WHERE id > $id and ${"name" beginsWithIgnoreCase input}")
  * ```*/
 object Sql: Interpolator<Any, Query> {
 

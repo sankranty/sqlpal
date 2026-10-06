@@ -100,7 +100,7 @@ fun <T: Any> update(entity: T, where: Query? = null, updateAutoGenValues: Boolea
  * update(person) { except(::name, ::city) } - to update all columns except 'name' and 'city'.
  * - [set] - same as [only], but also sets specified properties to specified values before update, e.g.:
  *
- * update(person) { set (::position to "Developer") } - to set value in both 'position' property and column.
+ * update(person) { set (::position to "Developer") } - to set value in both 'position' property and the column.
  * @return number of updated rows. */
 fun <T: Any> update(entity: T, con: Connection? = null, where: Query? = null, updateAutoGenValues: Boolean = false, propList: (T.() -> PropsToUpdate)?) =
     execInsertOrUpdate(entity, propList?.let { entity.it() }, con, updateAutoGenValues, "UPDATE %s SET ", " = ?",
@@ -125,7 +125,7 @@ fun only(vararg items: KProperty0<*>) = PropsToUpdate(items, null)
 /** Provides list of properties to exclude from the update, see [update] for description. */
 fun except(vararg items: KProperty0<*>) = PropsToUpdate(null, items)
 
-/** Same as [only], but also sets specified properties to specified values, see [update] for description. */
+/** Same as [only], but also sets specified properties of the object to specified values, see [update] for description. */
 @Suppress("UNCHECKED_CAST")
 fun set(vararg items: Pair<KProperty0<*>, Any?>) = PropsToUpdate(
     Array(items.size) {

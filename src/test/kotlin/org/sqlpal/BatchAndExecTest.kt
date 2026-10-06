@@ -115,7 +115,7 @@ class BatchAndExecTest : H2TestBase() {
             autoGenColumns = arrayOf("id")
         )
         assertNotNull(result)
-        assertTrue(result!!.containsKey("id"), "expected an 'id' key, got ${result.keys}")
+        assertTrue(result.containsKey("id"), "expected an 'id' key, got ${result.keys}")
         // H2 returns the generated identity as a Number.
         assertTrue(result["id"] is Number, "expected a numeric id, got ${result["id"]}")
     }
