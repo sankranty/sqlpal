@@ -16,7 +16,7 @@ plugins {
 }
 
 dependencies {
-    implementation("org.sqlpal:sqlpal:1.0.6")
+    implementation("org.sqlpal:sqlpal:1.0.7")
 }
 ```
 And most of the operations are done in a single line (no need to manually map bind parameters):
@@ -71,7 +71,7 @@ fun main() {
     }
     
     // Update without an object
-    update(where = -"id = $id", Person::name to "Bob")
+    updateWhere(-"id = $id", Person::name to "Bob")
 }
 ```
 
@@ -290,6 +290,7 @@ from standard string utility functions.
 ### Select
 
 * `selectById` - select a single entity by ID. The ID column is identified by a property annotated with `@Id`.
+* `exists` - returns true if a row with the specified ID (or ID of the specified entity) exists.
 
 Methods to select from a single table (SELECT and FROM clauses are automatically generated, 
 you provide only the part after the WHERE keyword):
@@ -308,13 +309,15 @@ Methods to select values from any source (you provide a full SELECT query):
 
 * `insert` - inserts an entity and by default updates properties annotated with `@AutoGen` with values from the database.
 * `insertMany` - inserts entities from any iterable source. It is optimized for inserting many items.
+* `upsert` - updates an entity, identified by a property annotated with `@Id`, or inserts it if it does not exist yet.
+Safe for concurrent upserts from multiple connections.
 
 ### Update
 
 * `update` - updates a single entity, identified by a property annotated with `@Id`, 
 or entities that match the criteria if `where` parameter is specified.
 * `update` (with `propList` parameter) - same as above, but updates only the specified properties.
-* `update` (without `entity` parameter) - updates specified values for entities that match the `where` parameter criteria.
+* `updateWhere` - updates specified values for entities that match the `where` parameter criteria.
 Allows updating values without creating an entity object.
 
 ### Delete
@@ -326,9 +329,13 @@ Allows updating values without creating an entity object.
 
 * `exec` - executes a query and returns the number of rows affected.
 
-Methods to get values of generated columns:
+Methods to get values of generated results:
 * `execWithResult` - executes a query and returns the first generated value.
 * `execWithResults` - executes a query and returns a map of 'colName - generated value' for the first inserted/updated row.
+
+Methods to get generated results as an entity object:
+* `execToOne` - executes a query and returns an entity object created for the first inserted/updated row.
+* `execToOneOrNull` - same as `execToOne` but returns null when no results instead of throwing.
 
 ### Transactions
 
