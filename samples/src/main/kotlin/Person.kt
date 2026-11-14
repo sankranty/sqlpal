@@ -21,13 +21,30 @@ data class Person (
     //var edu: List<Education>?
 )
 
+data class PersonAuto (
+    @Id @AutoGen
+    var id: Long? = null,
+    var name: String,
+
+    var gender: Gender,
+    var birthDate: LocalDate,
+    var work: String = "",
+    var about: String = "",
+    var height: Int = 0,
+    var education: Education = Education.undefined,
+    var city: String = "",
+    var edu: List<Education>?,
+    @AutoGen
+    var about2: String = "",
+)
+
 open class Base (
     @Id @AutoGen
     var id: Long? = null,
 )
 
 @SqlName("\"some table\"")
-data class Person3 (
+data class Collections (
     @SqlName("\"first-name\"")
     var name: String,
     var num: List<Int>,
@@ -41,7 +58,7 @@ data class Person3 (
 ) : Base()
 
 @OptIn(ExperimentalUnsignedTypes::class)
-data class PersonJ (
+data class JsonCollections (
     @Id @AutoGen
     var id: Long? = null,
     var name: String,
@@ -54,7 +71,7 @@ data class PersonJ (
     var numUByte: UByteArray? = null,
     var numUShort: UShortArray? = null
 )
-data class PersonB (
+data class BinaryData (
     var name: String,
     var bin: ByteArray? = null,
     var large: ByteArray? = null,
@@ -63,7 +80,7 @@ data class PersonB (
 )
 
 @OptIn(ExperimentalUnsignedTypes::class)
-data class PersonU (
+data class UnsignedTypes (
     var name: String,
     var num: UInt,
     var num2: UByte? = null,
@@ -83,23 +100,6 @@ class Location(
     var point: Point,
     @Id @AutoGen
     var id: Long? = null,
-)
-
-data class Person2 (
-    @Id @AutoGen
-    var id: Long? = null,
-    var name: String,
-
-    var gender: Gender,
-    var birthDate: LocalDate,
-    var work: String = "",
-    var about: String = "",
-    var height: Int = 0,
-    var education: Education = Education.undefined,
-    var city: String = "",
-    var edu: List<Education>?,
-    @AutoGen
-    var about2: String = "",
 )
 
 enum class Gender {

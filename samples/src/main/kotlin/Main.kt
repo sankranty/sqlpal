@@ -64,18 +64,18 @@ fun point() {
 }
 
 fun blob() {
-    val p = PersonB("Mike", byteArrayOf(33, 35, 112), null)
+    val p = BinaryData("Mike", byteArrayOf(33, 35, 112), null)
     transaction { insert(p, it) }
-    select<PersonB>(-"true").forEach { println(it) }
+    select<BinaryData>(-"true").forEach { println(it) }
 }
 
 @OptIn(ExperimentalUnsignedTypes::class)
 fun unsigned() {
-    var p = PersonU("Mike", 40_000u, 220u, ulongArrayOf(10u, 20u), ubyteArrayOf(189u, 176u))
+    var p = UnsignedTypes("Mike", 40_000u, 220u, ulongArrayOf(10u, 20u), ubyteArrayOf(189u, 176u))
     insert(p)
-    p = PersonU("Nina", 10_000u, 227u, null, ubyteArrayOf(189u, 176u))
+    p = UnsignedTypes("Nina", 10_000u, 227u, null, ubyteArrayOf(189u, 176u))
     insert(p)
-    select<PersonU>(-"num = ${40_000u} or num2 = ${p.num2}").forEach { println(it) }
+    select<UnsignedTypes>(-"num = ${40_000u} or num2 = ${p.num2}").forEach { println(it) }
 }
 
 fun ifElse() {
@@ -141,14 +141,14 @@ fun whereIn() {
 
     println("By full list equality")
     val edu = listOf(Education.high, Education.middle)
-    select<Person3>(-"edu = ${-edu}").forEach { println(it) }
+    select<Collections>(-"edu = ${-edu}").forEach { println(it) }
 }
 
 @OptIn(ExperimentalUnsignedTypes::class)
 fun json() {
     SqlPal.storeArraysAs = ArrayStorageType.JsonExceptByteArray
 
-    var p = PersonJ(name = "Katerina",
+    var p = JsonCollections(name = "Katerina",
         num = arrayOf(12, 11, 27),
         numArr = IntArray(4) { it * 3 },
         edu = listOf(Education.high, Education.middle),
@@ -160,12 +160,12 @@ fun json() {
     )
     insert(p)
 
-    updateWhere(-"id >= ${44}", PersonJ::name to "Ekaterina")
+    updateWhere(-"id >= ${44}", JsonCollections::name to "Ekaterina")
 
-    val persons = select<PersonJ>(-"${"edu" includes "high"}")
+    val persons = select<JsonCollections>(-"${"edu" includes "high"}")
     persons.forEach { println(it) }
 
-    p = PersonJ(name = "Katerina",
+    p = JsonCollections(name = "Katerina",
         edu = listOf(Education.high, Education.middle, Education.scienceDegree),
         edus = setOf(Education.high, Education.school),
         edua = arrayOf(Education.high, Education.scienceDegree),
@@ -173,11 +173,11 @@ fun json() {
     )
     insert(p)
     println("\nPersons with match by relations map content:")
-    select<PersonJ>(-"relations = ${-p.relations}").forEach { println(it) }
+    select<JsonCollections>(-"relations = ${-p.relations}").forEach { println(it) }
 }
 
 fun insInTran() {
-    val p = Person2(name = "Katerina", gender = Gender.female, birthDate = LocalDate.now(), education = Education.high,
+    val p = PersonAuto(name = "Katerina", gender = Gender.female, birthDate = LocalDate.now(), education = Education.high,
         edu = listOf(Education.high, Education.middle))
     transaction {
         insert(p, it)
@@ -187,20 +187,20 @@ fun insInTran() {
 }
 
 fun insListAndArray() {
-    var p = Person3(name = "Katerina", num = mutableListOf(0, 7), num2= arrayOf(7, 8),
+    var p = Collections(name = "Katerina", num = mutableListOf(0, 7), num2= arrayOf(7, 8),
         edu = arrayOf(Education.high, Education.middle), edu2 = mutableListOf(Education.scienceDegree))
     insert(p)
 
-    p = Person3(name = "Katerina", num = emptyList(), num2= emptyArray(), edu = emptyArray())
+    p = Collections(name = "Katerina", num = emptyList(), num2= emptyArray(), edu = emptyArray())
     insert(p)
 
     println("Inserted person ID is ${p.id} and numbers are ${p.num}")
 }
 
 fun insMany() {
-    delete<Person3>(-"id >= 30")
+    delete<Collections>(-"id >= 30")
 
-    val list = mutableListOf<Person3>()
+    val list = mutableListOf<Collections>()
     repeat(10_000) {
         val num = (0..9).random()
         val edu = when ((0..3).random()) {
@@ -210,7 +210,7 @@ fun insMany() {
             else -> Education.undefined
         }
         list.add(
-            Person3(
+            Collections(
                 name = "Katerina",
                 num = mutableListOf(num, num + 7),
                 num2 = arrayOf(7, 8, 9),
@@ -224,13 +224,13 @@ fun insMany() {
 }
 
 fun updInTran() {
-    val p2 = selectById<Person2>(10)
+    val p2 = selectById<PersonAuto>(10)
     p2.height = 175
     update(p2, listOf("height" to p2.height))
 
     transaction {
         val name = "Katerina"
-        val p = Person2(name = name, gender = Gender.female, birthDate = LocalDate.now(), education = Education.high,
+        val p = PersonAuto(name = name, gender = Gender.female, birthDate = LocalDate.now(), education = Education.high,
             edu = listOf(Education.high, Education.middle))
         p.work = "Economist"
         update(p, it, -"name = $name")
@@ -241,7 +241,7 @@ fun updInTran() {
 }
 
 fun updSet() {
-    var p = selectById<Person3>(11)
+    var p = selectById<Collections>(11)
     p.name = "Ekaterina"
     p.num = listOf(500)
     p.num2 = arrayOf(1000)
@@ -259,10 +259,10 @@ fun updSet() {
 }
 
 fun find() {
-    val p = selectById<Person2>(20)
+    val p = selectById<PersonAuto>(20)
     println("Education of person with ID ${p.id} is ${p.edu}")
 
-    val p3 = selectById<Person3>(1)
+    val p3 = selectById<Collections>(1)
     println("Education of person with ID ${p3.id} is ${p3.name}")
 }
 
@@ -286,7 +286,7 @@ fun sel() {
 }
 
 fun collections() {
-    val p = Person3("Katerina", listOf(1, 4, 8),
+    val p = Collections("Katerina", listOf(1, 4, 8),
         num2 = arrayOf(10, 20, 30),
         numArr = IntArray(4) { it * 3 },
         edu = arrayOf(Education.high, Education.middle),
@@ -294,23 +294,23 @@ fun collections() {
         edus = setOf(Education.high, Education.school),
     )
     insert(p)
-    select<Person3>(-"""
+    select<Collections>(-"""
         edu = ${p.edu} and edu2 = ${-p.edu2} and edus = ${-p.edus} 
         and num2 = ${p.num2} and num_arr = ${p.numArr}
         """).forEach { println(it) }
-    //select<Person3>(-"edu = ${p.edu} and edu2 = ${-p.edu2} and edus = ${-p.edus}").forEach { println(it) }
+    //select<Collections>(-"edu = ${p.edu} and edu2 = ${-p.edu2} and edus = ${-p.edus}").forEach { println(it) }
 
-    println("Select Person3")
+    println("Select Collections")
     var educations: List<Education> = mutableListOf(Education.high)
     val educationsArr = emptyArray<Education>()
     val num = emptyArray<Int>()
     val num2 = emptyList<Int>()
-    //select<Person3>(-"num = $num and num2 = ${-num2}").forEach { println(it) }
-    select<Person3>(-"edu2 = ${-educations}", includeOptional = true).forEach { println(it) }
+    //select<Collections>(-"num = $num and num2 = ${-num2}").forEach { println(it) }
+    select<Collections>(-"edu2 = ${-educations}", includeOptional = true).forEach { println(it) }
 
-    println("Select Person3 with filter by empty list")
+    println("Select Collections with filter by empty list")
     educations = emptyList()
-    select<Person3>(-"num2 = $num and edu2 = ${-educations}").forEach { println(it) }
+    select<Collections>(-"num2 = $num and edu2 = ${-educations}").forEach { println(it) }
 }
 
 var selectedRowsCount = Array(0) { 0 to 0.0 }
