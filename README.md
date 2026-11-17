@@ -265,6 +265,15 @@ read<Person>(-"""
         ORDER BY id
         """)
 ```
+`$If` can be nested within one line (the inner one is evaluated only if the outer one is true):
+```kotlin
+$If $activeOnly AND e.active = true $If $codersOnly AND any(hobbies) = ${Hobby.Coding}
+```
+Note that a following `$Else` is applied to the right-most `$If` (here, to `$If $codersOnly`):
+```kotlin
+$If $activeOnly AND e.active = true $If $codersOnly AND any(hobbies) = ${Hobby.Coding}
+$Else AND name <> ''
+```
 To inline something directly into the query string (instead of treating it as a bind parameter), use `$I$` instead of `$`.
 ```kotlin
 val sortColumn = if (sortByName) "name" else "creation_date"
