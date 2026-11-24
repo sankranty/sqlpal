@@ -43,11 +43,11 @@ fun insert(entity: Any, con: Connection? = null, updateAutoGenValues: Boolean = 
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
  * @param insertFirst Performance hint. Set to true if inserts are more often. Otherwise, it will try to update first.
  * @param propList Allows to include or exclude particular properties on update. Has no effect on insert.
- * Provide lambda with call to one of the following functions:
- * - [only] - provides list of properties to update in the database, e.g.:
+ * Pass lambda with one of the following functions:
+ * - [only] - to include only specified properties into the update, e.g.:
  *
  * update(person) { only(::name) } - to update only a 'name' column.
- * - [except] - provides list of properties to exclude, while all other properties will be updated in the database, e.g.:
+ * - [except] - to exclude specified properties, while all other properties will be updated in the database, e.g.:
  *
  * update(person) { except(::name, ::city) } - to update all columns except 'name' and 'city'.
  * - [set] - same as [only], but also sets specified properties to specified values before update, e.g.:
