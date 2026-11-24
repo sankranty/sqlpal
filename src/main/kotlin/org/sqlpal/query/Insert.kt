@@ -42,27 +42,39 @@ fun insert(entity: Any, con: Connection? = null, updateAutoGenValues: Boolean = 
  * Otherwise, connection is obtained from pool and released after use.
  * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
  * @param insertFirst Performance hint. Set to true if inserts are more often. Otherwise, it will try to update first.
+ * @param propList Allows to include or exclude particular properties on update. Has no effect on insert.
+ * Provide lambda with call to one of the following functions:
+ * - [only] - provides list of properties to update in the database, e.g.:
+ *
+ * update(person) { only(::name) } - to update only a 'name' column.
+ * - [except] - provides list of properties to exclude, while all other properties will be updated in the database, e.g.:
+ *
+ * update(person) { except(::name, ::city) } - to update all columns except 'name' and 'city'.
+ * - [set] - same as [only], but also sets specified properties to specified values before update, e.g.:
+ *
+ * update(person) { set (::position to "Developer") } - to set value in both 'position' property and the column.
  * @return number of inserted or updated rows. */
-fun <T: Any> upsert(entity: T, con: Connection? = null, insertFirst: Boolean = false): Int {
-    var affectedCount = // General logic - try to update > if failed try to insert > if failed try to update again:
-        if (insertFirst) 0 else update(entity, con) // 1. First try to update as it's cheaper than insert with savepoint
-    if (affectedCount == 0) {                       // 2. if nothing was updated,
+fun <T: Any> upsert(entity: T, con: Connection? = null, insertFirst: Boolean = false, propList: (T.() -> PropsToUpdate)? = null): Int {
+    // General logic - try to update > if failed, try to insert > if failed, try to update again:
+    var affectedCount = if (insertFirst) 0                           // 1. First try to update, as it's
+        else update(entity, con, propList = propList)                // cheaper than insert with savepoint
+    if (affectedCount == 0) {                                        // 2. if nothing was updated,
         // On Postgres if autoCommit is off, then failed insert breaks the transaction, so add savepoint to avoid it
         val sp = if (con?.autoCommit == false) con.setSavepoint() else null
         try {
-            affectedCount = insert(entity, con)     // 3. then try to insert it,
+            affectedCount = insert(entity, con)                      // 3. then try to insert it,
         }
-        catch (e: SQLException) {                   // 4. if insert threw an exception,
+        catch (e: SQLException) {                                    // 4. if insert threw an exception,
             sp?.let { con?.rollback(it) }
-            affectedCount = update(entity, con)     // 5. try to update again as row might be inserted by other connection
-            if (affectedCount == 0) throw e         // 6. if nothing updated, then exception is not our logic related, just rethrow
+            affectedCount = update(entity, con, propList = propList) // 5. try to update again as row might be inserted by other connection
+            if (affectedCount == 0) throw e                          // 6. if nothing updated, then exception is not our logic related, just rethrow
         }
         sp?.let { con?.releaseSavepoint(it) }
     }
     return affectedCount
 }
 
-/** Inserts multiple items in a single batch, considering:
+/** Inserts multiple items in a single batch, considering that:
  * - all items are of the same type,
  * - the table is named as the class in accordance with [SqlPal.convertNamesToSnakeCase] option,
  * - the columns are named as the properties in accordance with [SqlPal.convertNamesToSnakeCase] option.
