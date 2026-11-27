@@ -13,6 +13,18 @@ import kotlin.reflect.full.memberProperties
 //--------------------- Contains methods to perform SELECT ---------------------//
 //////////////////////////////////////////////////////////////////////////////////
 
+/** Returns true if the entity table has a row matching the [where] condition, considering that
+ * the table is named as the class in accordance with [SqlPal.convertNamesToSnakeCase] option.
+ * @param where The WHERE clause condition to look for.
+ * @param con If specified, then command is executed on it, and it is not closed after use.
+ * Otherwise, connection is obtained from pool and released after use.
+ * Specifying connection is useful when you need to execute in a transaction, use [transaction] method for convenience.
+ * @return true if the entity table has a row matching the [where] condition, otherwise false. */
+inline fun <reified T: Any> exists(where: Query, con: Connection? = null) = exists(T::class, where, con)
+@PublishedApi
+internal fun <T: Any> exists(type: KClass<T>, where: Query, con: Connection? = null) = readValueOrNull<Int>(
+    Query("SELECT 1 FROM ${entityName(type)} WHERE ${where.sql} LIMIT 1", where.bindParams), con) != null
+
 /** Returns true if entity with specified ID exists in the table, considering that:
  * - the table is named as the class in accordance with [SqlPal.convertNamesToSnakeCase] option,
  * - the columns are named as the primary constructor parameters in accordance with [SqlPal.convertNamesToSnakeCase] option,
@@ -25,8 +37,7 @@ import kotlin.reflect.full.memberProperties
 inline fun <reified T: Any> exists(id: Long, con: Connection? = null) = exists(T::class, id, con)
 @PublishedApi
 internal fun <T: Any> exists(type: KClass<T>, id: Long, con: Connection? = null): Boolean {
-    val idCol = colName(getIdProperty(type))
-    val query = "SELECT 1 FROM ${entityName(type)} WHERE $idCol = ?"
+    val query = "SELECT 1 FROM ${entityName(type)} WHERE ${colName(getIdProperty(type))} = ?"
     return readValueOrNull<Int>(Query(query, mutableListOf(id)), con) != null
 }
 
